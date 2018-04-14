@@ -2,7 +2,6 @@ import * as path from 'path';
 
 import Index from './index';
 import JSONStore from './json-store';
-import { findJSONfield } from './utils';
 
 class Database<T extends Record = Record> {
   protected store: JSONStore<T>;
@@ -14,12 +13,12 @@ class Database<T extends Record = Record> {
     const ext = path.extname(filename);
     const basename = path.basename(filename, ext);
     const indexFilename = `${path.join(dirname, basename)}.index${ext}`;
-    this.index = new Index(indexFilename, this.store);
+    this.index = new Index(indexFilename);
   }
 
   async create() {
     await this.store.create();
-    await this.index.create();
+    await this.index.create(this.indexedFields);
   }
 
   async find(field: string, value: any) {
@@ -30,10 +29,7 @@ class Database<T extends Record = Record> {
     const positions = await this.index.find(field, value);
 
     const objects = [];
-    for (const fieldPos of positions) {
-      const pos = await this.store.getObjectStart(fieldPos);
-      if (!pos)
-        throw new Error('This should never happen');
+    for (const pos of positions) {
       const obj = (await this.store.get(pos)).value;
       objects.push(obj);
     }
@@ -61,17 +57,13 @@ class Database<T extends Record = Record> {
         await this.store.insert(
           object, position, true
         );
-      const { start, length, raw } = res;
+      const { start, length } = res;
       position = start + length + 1;
       for (const field of this.indexedFields) {
-        if (field in object) {
-          const fieldPos = findJSONfield(raw, field);
-          if (fieldPos == null)
-            throw new Error('This should never happen');
+        if (field in object)
           objectFields.push({
-            field, value: object[field], position: start + fieldPos
+            field, value: object[field], position: start
           });
-        }
       }
     }
 

@@ -2,7 +2,7 @@ import * as fs from 'fs';
 
 import * as z85 from 'z85';
 
-export async function readJSON(
+export function readJSONSync(
   stream: IterableIterator<[number, string]>, parse = true
 ) {
   const chars = [];
@@ -126,13 +126,15 @@ export function findJSONfield(text: string, field: string) {
   return;
 }
 
-export function* read(fd: number, position = 0, reverse = false) {
+export function* readSync(
+  fd: number, position = 0, reverse = false, buffer?: Buffer
+) {
   // This function is synchronous because async generators are still too slow
   if (position < 0)
     position += fs.fstatSync(fd).size;
 
-  const size = 1 << 12;
-  const buffer = Buffer.alloc(size);
+  buffer = buffer || Buffer.alloc(1 << 16);
+  const size = buffer.length;
 
   let pos = reverse ? position - size + 1 : position;
 
@@ -158,14 +160,28 @@ export function* read(fd: number, position = 0, reverse = false) {
   }
 }
 
-export function z85EncodeAsUInt32(number: number) {
+export function z85EncodeAsUInt32(number: number, pad = true) {
   const buffer = Buffer.alloc(4);
   buffer.writeUInt32BE(number, 0);
-  return z85.encode(buffer);
+  const encoded = z85.encode(buffer);
+  return pad ? encoded : (encoded.replace(/^0+/, '') || '0');
 }
 
 export function z85DecodeAsUInt32(string: string) {
   if (string.length > 5)
     throw new Error('Cannot decode string longer than 5 characters');
   return z85.decode(string.padStart(5, '0')).readUInt32BE(0);
+}
+
+export function z85EncodeAsDouble(number: number, pad = true) {
+  const buffer = Buffer.alloc(8);
+  buffer.writeDoubleBE(number, 0);
+  const encoded = z85.encode(buffer);
+  return pad ? encoded : (encoded.replace(/0+$/, '') || '0');
+}
+
+export function z85DecodeAsDouble(string: string) {
+  if (string.length > 10)
+    throw new Error('Cannot decode string longer than 5 characters');
+  return z85.decode(string.padEnd(10, '0')).readDoubleBE(0);
 }

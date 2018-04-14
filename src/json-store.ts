@@ -1,11 +1,11 @@
 import File from './file';
-import { readJSON } from './utils';
+import { readJSONSync } from './utils';
 
 class JSONStore<T extends object = object> implements Store<T> {
   protected file: File;
 
   constructor(filename: string, protected indent = 2) {
-    this.file = new File(filename);
+    this.file = new File(filename, Buffer.alloc(1 << 12));
   }
 
   get isOpen() {
@@ -34,20 +34,26 @@ class JSONStore<T extends object = object> implements Store<T> {
     const alreadyOpen = this.file.isOpen;
     if (!alreadyOpen)
       await this.file.open();
-    try {
-      const { value, start, length } =
-        await readJSON(this.file.read(position));
-      return { value: value as T, start, length };
-    } finally {
-      if (!alreadyOpen)
-        await this.file.close();
-    }
+
+    const { value, start, length } =
+      readJSONSync(this.file.readSync(position));
+
+    if (!alreadyOpen)
+      await this.file.close();
+
+    return { value: value as T, start, length };
+  }
+
+  getSync(position: number) {
+    const { value, start, length } =
+      readJSONSync(this.file.readSync(position));
+    return { value: value as T, start, length };
   }
 
   async remove(position: number) {
-    const { start, length } = await readJSON(this.file.read(position), false);
+    const { start, length } = readJSONSync(this.file.readSync(position), false);
     let last = false;
-    for (const [_, char] of this.file.read(start + length)) {
+    for (const [_, char] of this.file.readSync(start + length)) {
       if (char == ' ' || char == '\n')
         continue;
       else {
@@ -83,7 +89,7 @@ class JSONStore<T extends object = object> implements Store<T> {
     if (position != null && !last) {
       let start = position;
       if (position > 0) {
-        for (const [i, char] of this.file.read(position - 1, true)) {
+        for (const [i, char] of this.file.readSync(position - 1, true)) {
           if (char == ' ' || char == '\n')
             start = i;
           else
@@ -94,7 +100,7 @@ class JSONStore<T extends object = object> implements Store<T> {
 
       let end = position;
       let last = false;
-      for (const [i, char] of this.file.read(position)) {
+      for (const [i, char] of this.file.readSync(position)) {
         if (char == ' ' || char == '\n')
           end = i;
         else {
@@ -121,7 +127,7 @@ class JSONStore<T extends object = object> implements Store<T> {
     } else {
       let isFirst = false;
       if (!position) {
-        for (const [i, char] of this.file.read(-1, true)) {
+        for (const [i, char] of this.file.readSync(-1, true)) {
           if (char == ' ' || char == '\n')
             continue;
           if (!position)
@@ -148,8 +154,13 @@ class JSONStore<T extends object = object> implements Store<T> {
   }
 
   async set(position: number, value: any) {
+    const alreadyOpen = this.file.isOpen;
+    if (!alreadyOpen)
+      await this.file.open();
     const valueString = JSON.stringify(value);
     await this.file.write(position, valueString);
+    if (!alreadyOpen)
+      await this.file.close();
   }
 
   async getObjectStart(position: number) {
@@ -158,7 +169,7 @@ class JSONStore<T extends object = object> implements Store<T> {
     let inString = false;
     let pos;
 
-    for (const [i, char] of this.file.read(position, true)) {
+    for (const [i, char] of this.file.readSync(position, true)) {
       // Ignore space
       if (char == ' ' || char == '\n')
         continue;

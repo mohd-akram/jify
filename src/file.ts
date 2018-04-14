@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import { promisify } from 'util';
 
-import { read } from './utils';
+import { readSync } from './utils';
 
 const fsOpen = promisify(fs.open);
 const fsClose = promisify(fs.close);
@@ -10,16 +10,16 @@ const fsWrite = promisify(fs.write);
 class File {
   protected fd: number | null = null;
 
-  constructor(protected filename: string) { }
+  constructor(protected filename: string, protected buffer?: Buffer) { }
 
   get isOpen() {
     return this.fd != null;
   }
 
-  read(position: number, reverse = false) {
+  readSync(position: number, reverse = false) {
     if (!this.fd)
       throw new Error('Need to call open() before read()');
-    return read(this.fd, position, reverse);
+    return readSync(this.fd, position, reverse, this.buffer);
   }
 
   async write(position: number, text: string) {
