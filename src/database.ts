@@ -60,10 +60,10 @@ class Database<T extends Record = Record> {
       const { start, length } = res;
       position = start + length + 1;
       for (const field of this.indexedFields) {
-        if (field in object)
-          objectFields.push({
-            field, value: object[field], position: start
-          });
+        const value = Database.getField(object, field);
+        if (value == undefined)
+          continue;
+        objectFields.push({ field, value, position: start });
       }
     }
 
@@ -81,6 +81,16 @@ class Database<T extends Record = Record> {
       if (e.code != 'ENOENT')
         throw e;
     }
+  }
+
+  protected static getField(object: Record, field: string) {
+    let value: any = object;
+    for (const f of field.split('.')) {
+      if (!value)
+        return;
+      value = value[f];
+    }
+    return value;
   }
 }
 

@@ -3,6 +3,13 @@ import * as assert from 'assert';
 import Database from '..';
 import { Record } from '../src/database';
 
+function getField(object: Record, field: string) {
+  let value: any = object;
+  for (const f of field.split('.'))
+    value = value[f];
+  return value;
+}
+
 function getRandomInt(min: number, max: number) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
@@ -55,26 +62,27 @@ async function testFind(
     console.log(`${objects.length} results`);
     assert.equal(objects.length, count(val));
     for (const obj of objects)
-      assert.equal(obj[field], val);
+      assert.equal(getField(obj, field), val);
   }
 }
 
 async function main() {
   const n = Number(process.argv[2]) || 10_000;
-  const fields = ['name', 'age'];
+  const fields = ['id', 'person.age'];
   const db = new Database(`${__dirname}/data/data-insert-${n}.json`, fields);
 
-  const { array: names, count: namesCount } =
+  const { array: ids, count: idsCount } =
     fillArray(n, _ => Math.random().toString(36));
   const { array: ages, count: agesCount } =
     fillArray(n, _ => Math.round(Math.random() * 100));
 
-  await testInserts(db, n, i => ({ name: names[i], age: ages[i] }));
+  await testInserts(db, n, i => ({ id: ids[i], person: { age: ages[i] } }));
   await testFind(
-    db, 'name', 20, _ => names[getRandomInt(0, n - 1)], val => namesCount[val]
+    db, 'id', 20, _ => ids[getRandomInt(0, n - 1)], val => idsCount[val]
   );
   await testFind(
-    db, 'age', 20, _ => ages[getRandomInt(0, n - 1)], val => agesCount[val]
+    db, 'person.age', 20, _ => ages[getRandomInt(0, n - 1)],
+    val => agesCount[val]
   );
 }
 
