@@ -6,19 +6,25 @@ import JSONStore from './json-store';
 class Database<T extends Record = Record> {
   protected store: JSONStore<T>;
   protected index: Index;
+  protected indexedFields: IndexField[];
 
-  constructor(filename: string, protected indexedFields: string[] = []) {
+  constructor(filename: string, indexedFields: (string | IndexField)[] = []) {
     this.store = new JSONStore<T>(filename);
+
     const dirname = path.dirname(filename);
     const ext = path.extname(filename);
     const basename = path.basename(filename, ext);
     const indexFilename = `${path.join(dirname, basename)}.index${ext}`;
     this.index = new Index(indexFilename);
+
+    this.indexedFields = indexedFields.map(
+      f => typeof f == 'string' ? { field: f, key: (v: any) => v } : f
+    );
   }
 
   async create() {
     await this.store.create();
-    await this.index.create(this.indexedFields);
+    await this.index.create(this.indexedFields.map(f => f.field));
   }
 
   async find(field: string, value: any) {
@@ -59,11 +65,11 @@ class Database<T extends Record = Record> {
         );
       const { start, length } = res;
       position = start + length + 1;
-      for (const field of this.indexedFields) {
+      for (const { field, key } of this.indexedFields) {
         const value = Database.getField(object, field);
         if (value == undefined)
           continue;
-        objectFields.push({ field, value, position: start });
+        objectFields.push({ field, value: key(value), position: start });
       }
     }
 
@@ -96,6 +102,11 @@ class Database<T extends Record = Record> {
 
 export interface Record {
   [field: string]: any;
+}
+
+export interface IndexField {
+  field: string;
+  key: (value: any) => any;
 }
 
 export default Database;

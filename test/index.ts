@@ -68,21 +68,33 @@ async function testFind(
 
 async function main() {
   const n = Number(process.argv[2]) || 10_000;
-  const fields = ['id', 'person.age'];
+  const fields = [
+    'id', 'person.age', { field: 'created', key: (v: any) => Date.parse(v) }
+  ];
   const db = new Database(`${__dirname}/data/data-insert-${n}.json`, fields);
 
   const { array: ids, count: idsCount } =
     fillArray(n, _ => Math.random().toString(36));
   const { array: ages, count: agesCount } =
     fillArray(n, _ => Math.round(Math.random() * 100));
+  const { array: dates, count: datesCount } =
+    fillArray(n, _ =>
+      new Date(+(new Date()) - Math.floor(Math.random() * 1e10)).toISOString()
+    );
 
-  await testInserts(db, n, i => ({ id: ids[i], person: { age: ages[i] } }));
+  await testInserts(db, n, i => ({
+    id: ids[i], person: { age: ages[i] }, created: dates[i]
+  }));
   await testFind(
     db, 'id', 20, _ => ids[getRandomInt(0, n - 1)], val => idsCount[val]
   );
   await testFind(
     db, 'person.age', 20, _ => ages[getRandomInt(0, n - 1)],
     val => agesCount[val]
+  );
+  await testFind(
+    db, 'created', 20, _ => dates[getRandomInt(0, n - 1)],
+    val => datesCount[val]
   );
 }
 
