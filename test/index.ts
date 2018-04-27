@@ -57,7 +57,7 @@ async function testFind(
   for (let i = 0; i < n; i++) {
     const val = value(i);
     console.time(`find ${field}=${val}`);
-    const objects = await db.find(field, val);
+    const objects = await db.find({ [field]: val });
     console.timeEnd(`find ${field}=${val}`);
     console.log(`${objects.length} results`);
     assert.equal(objects.length, count(val));

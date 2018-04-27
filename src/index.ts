@@ -1,4 +1,5 @@
 import JSONStore from './json-store';
+import { Predicate } from './query';
 import {
   z85DecodeAsUInt32, z85EncodeAsUInt32,
   z85DecodeAsDouble, z85EncodeAsDouble
@@ -21,8 +22,8 @@ class Index {
     await this.store.destroy();
   }
 
-  async find(field: string, value: any) {
-    const entries = await this.findEntries(field, value);
+  async find(field: string, predicate: Predicate<SkipListValue>) {
+    const entries = await this.findEntries(field, predicate);
     return entries.map(entry => entry.pointer);
   }
 
@@ -272,7 +273,7 @@ class Index {
     );
   }
 
-  protected async findEntries(field: string, value: any) {
+  protected async findEntries(field: string, predicate: Predicate<SkipListValue>) {
     const alreadyOpen = this.store.isOpen;
     if (!alreadyOpen)
       await this.store.open();
@@ -282,32 +283,45 @@ class Index {
     const head = this.getHead(field, cache);
     const height = head.node.levels.filter(p => p != 0).length;
 
-    let entry: IndexEntry | undefined;
+    let found = false;
 
-    let current = head;
+    let current: IndexEntry | null = head;
     for (let i = height; i >= 0; i--) {
       while (current.node.next(i)) {
         const next = this.getEntry(current.node.next(i), cache);
-        if (next.node.value == value)
-          entry = next;
-        if (next.node.value! >= value)
+        const { seek } = predicate(next.node.value);
+        if (seek <= 0)
+          current = next;
+        if (seek == 0)
+          found = true;
+        if (seek >= 0)
           break;
-        current = next;
       }
-      if (entry)
+      if (found)
         break;
     }
 
-    if (!entry)
-      return [];
+    if (current == head)
+      current = current.node.next(0) ?
+        this.getEntry(current.node.next(0), cache) : null;
 
-    const entries: IndexEntry[] = [entry];
+    const entries: IndexEntry[] = [];
 
-    current = entry;
-    while (current.link) {
-      const link = this.getEntry(current.link);
-      entries.push(link);
-      current = link;
+    while (current) {
+      let entry = current;
+      current = current.node.next(0) ?
+        this.getEntry(current.node.next(0), cache) : null;
+      const { seek, match } = predicate(entry.node.value);
+      if (seek <= 0 && !match)
+        continue;
+      if (!match)
+        break;
+      entries.push(entry);
+      while (entry.link) {
+        const link = this.getEntry(entry.link, cache);
+        entries.push(link);
+        entry = link;
+      }
     }
 
     if (!alreadyOpen)

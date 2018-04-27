@@ -2,6 +2,7 @@ import * as path from 'path';
 
 import Index from './index';
 import JSONStore from './json-store';
+import { Query } from './query';
 
 class Database<T extends Record = Record> {
   protected store: JSONStore<T>;
@@ -27,12 +28,47 @@ class Database<T extends Record = Record> {
     await this.index.create(this.indexedFields.map(f => f.field));
   }
 
-  async find(field: string, value: any) {
+  async find(query: Query) {
     const alreadyOpen = this.store.isOpen;
     if (!alreadyOpen)
       await this.store.open();
 
-    const positions = await this.index.find(field, value);
+    let positions: Set<number> | undefined;
+    for (const field in query) {
+      if (positions && !positions.size)
+        break;
+
+      const indexField = this.indexedFields.find(f => f.field == field);
+      if (!indexField)
+        throw new Error(`Field "${field}" not indexed`);
+
+      let predicate = query[field];
+      if (typeof predicate == 'function') {
+        predicate.key = indexField.key;
+      } else {
+        const start = indexField.key(predicate);
+        predicate = (value: any) => ({
+          seek: value < start ? -1 : value > start ? 1 : 0,
+          match: value == start
+        });
+      }
+
+      const fieldPositions = await this.index.find(field, predicate);
+
+      if (!positions) {
+        positions = new Set(fieldPositions);
+        continue;
+      }
+
+      const intersection = new Set<number>();
+
+      for (const pointer of fieldPositions)
+        if (positions.has(pointer))
+          intersection.add(pointer);
+
+      positions = intersection;
+    }
+    positions = positions || new Set();
 
     const objects = [];
     for (const pos of positions) {
