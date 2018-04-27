@@ -145,12 +145,33 @@ export function* readSync(
 
     const bytesRead = fs.readSync(fd, buffer, 0, length, pos);
 
-    for (let i = 0; i < bytesRead; i++) {
-      const index = reverse ? (bytesRead - i - 1) : i;
-      yield [
-        pos + index,
-        String.fromCharCode(buffer[index])
-      ] as [number, string];
+    for (let i = 0; i < bytesRead;) {
+      let index = reverse ? (bytesRead - i - 1) : i;
+
+      let count = 0;
+      if (reverse) {
+        count = 1;
+        while ((buffer[index] & 0xc0) == 0x80)
+          --index, ++count;
+      } else {
+        for (let b = 7; (buffer[index] >> b) & 1; b--)
+          ++count;
+        count = count || 1;
+      }
+
+      if (index < 0 || index + count > buffer.length)
+        throw new Error('Cannot handle this');
+
+      try {
+        yield [
+          pos + index,
+          buffer.toString('utf-8', index, index + count)
+        ] as [number, string];
+        i += count;
+      } finally {
+        // Prevent generator from being marked as done prematurely
+        continue;
+      }
     }
 
     if (bytesRead < size || (reverse && !pos))
