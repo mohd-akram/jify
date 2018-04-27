@@ -341,6 +341,8 @@ export class SkipListNode {
       const levels: number[] = obj;
       if (!levels)
         throw new Error('levels is required');
+      if (typeof value == 'number' && !Number.isFinite(value))
+        throw new Error('Number value must be finite');
       this.value = value == null ? null : value;
       this.levels = levels;
     } else {
