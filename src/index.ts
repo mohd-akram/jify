@@ -191,8 +191,8 @@ class Index {
       head = await this.insertRootEntry();
     }
 
-    while (head.pointer) {
-      head = this.getEntry(head.pointer);
+    while (head.link) {
+      head = this.getEntry(head.link);
       fields = fields.filter(f => f != head.field);
     }
 
@@ -203,7 +203,7 @@ class Index {
         field, 0, new SkipListNode(Array(this.maxHeight).fill(0))
       );
       position = await this.insertEntry(head, undefined, position);
-      prevHead.pointer = head.position;
+      prevHead.link = head.position;
       await this.updateEntry(prevHead);
     }
 
@@ -214,8 +214,11 @@ class Index {
   protected getHead(field: string, cache?: IndexCache) {
     let head = this.getRootEntry(cache);
 
-    while (head.field != field && head.pointer)
-      head = this.getEntry(head.pointer, cache);
+    while (head.field != field && head.link)
+      head = this.getEntry(head.link, cache);
+
+    if (head.field != field)
+      throw new Error(`Field "${field}" missing from index`);
 
     return head;
   }
