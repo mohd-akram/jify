@@ -92,8 +92,8 @@ class Database<T extends Record = Record> {
 
     const objectFields = [];
 
-    let startPosition;
-    let position;
+    let startPosition: number | undefined;
+    let position: number | undefined;
     let output: string[] = [];
 
     for (const object of objects) {

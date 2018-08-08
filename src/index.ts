@@ -58,7 +58,7 @@ class Index {
       --position;
     }
 
-    let startPosition = 0;
+    let startPosition: number | undefined;
     let insertPosition: number | undefined;
     const output: string[] = [];
 
@@ -222,7 +222,7 @@ class Index {
       fields = fields.filter(f => f != head.field);
     }
 
-    let position;
+    let position: number | undefined;
     for (const field of fields) {
       const prevHead = head;
       head = new IndexEntry(

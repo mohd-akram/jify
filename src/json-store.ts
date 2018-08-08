@@ -173,9 +173,9 @@ class JSONStore<T extends object = object> implements Store<T> {
 
   async getObjectStart(position: number) {
     let depth = 1;
-    let prevChar;
+    let prevChar: string | undefined;
     let inString = false;
-    let pos;
+    let pos: number | undefined;
 
     for (const [i, char] of this.file.readSync(position, true)) {
       // Ignore space

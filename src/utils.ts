@@ -12,7 +12,7 @@ export function readJSONSync(
   let length = 0;
   let depth = 0;
   let inString = false;
-  let prevChar;
+  let prevChar: string | undefined;
 
   for (const [i, char] of stream) {
     if (start == -1) {
@@ -82,7 +82,7 @@ export function readJSONSync(
 }
 
 export function findJSONfield(text: string, field: string) {
-  let prevChar;
+  let prevChar: string | undefined;
   let inString = false;
   let depth = 0;
   let str = '';
