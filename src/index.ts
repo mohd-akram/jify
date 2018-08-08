@@ -313,9 +313,10 @@ class Index {
     let found = false;
 
     let current: IndexEntry | null = head;
-    for (let i = height; i >= 0; i--) {
-      while (current.node.next(i)) {
-        const next = this.getEntry(current.node.next(i), cache);
+    for (let i = height - 1; i >= 0; i--) {
+      let nextNodePos: number;
+      while (nextNodePos = current.node.next(i)) {
+        const next = this.getEntry(nextNodePos, cache);
         const { seek } = predicate(next.node.value);
         if (seek <= 0)
           current = next;
