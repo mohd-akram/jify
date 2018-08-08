@@ -125,32 +125,40 @@ class JSONStore<T extends object = object> implements Store<T> {
 
       return { start, length: dataString.length, raw: dataString };
     } else {
-      let isFirst = false;
-      if (!position) {
-        for (const [i, char] of this.file.readSync(-1, true)) {
-          if (char == ' ' || char == '\n')
-            continue;
-          if (!position)
-            position = i;
-          else {
-            if (char == '[')
-              isFirst = true;
-            break;
-          }
-        }
-      }
-      await this.file.write(
-        position! - 1,
-        `${isFirst ? '' : ','}\n${' '.repeat(this.indent)}${dataString}\n]\n`,
-      );
+      const result = await this.appendRaw(dataString, position);
       if (!alreadyOpen)
         await this.file.close();
-      return {
-        start: position! + Number(!isFirst) + this.indent,
-        length: dataString.length,
-        raw: dataString
-      };
+      return result;
     }
+  }
+
+  async appendRaw(dataString: string, position?: number) {
+    let isFirst = false;
+
+    if (!position) {
+      for (const [i, char] of this.file.readSync(-1, true)) {
+        if (char == ' ' || char == '\n')
+          continue;
+        if (!position)
+          position = i;
+        else {
+          if (char == '[')
+            isFirst = true;
+          break;
+        }
+      }
+    }
+
+    await this.file.write(
+      position! - 1,
+      `${isFirst ? '' : ','}\n${' '.repeat(this.indent)}${dataString}\n]\n`,
+    );
+
+    return {
+      start: position! + Number(!isFirst) + this.indent,
+      length: dataString.length,
+      raw: dataString
+    };
   }
 
   async set(position: number, value: any) {
@@ -195,11 +203,16 @@ class JSONStore<T extends object = object> implements Store<T> {
     return pos;
   }
 
-  protected stringify(data: T, comma = false) {
+  stringify(data: T) {
     const str = this.indent ? JSON.stringify([data], null, this.indent).slice(
       2 + this.indent, -2
     ) : JSON.stringify(data);
-    return comma ? str + ',' : str;
+    return str;
+  }
+
+  joinForAppend(dataStrings: string[]) {
+    const indent = ' '.repeat(this.indent);
+    return dataStrings.join(`,\n${indent}`);
   }
 }
 

@@ -92,15 +92,29 @@ class Database<T extends Record = Record> {
 
     const objectFields = [];
 
+    let startPosition;
     let position;
+    let output: string[] = [];
+
     for (const object of objects) {
       // TypeScript needs some help to get the type
-      const res: { start: number, length: number, raw: string } =
-        await this.store.insert(
-          object, position, true
-        );
-      const { start, length } = res;
+      let start: number;
+      let length: number;
+      if (!position) {
+        const res: { start: number, length: number, raw: string } =
+          await this.store.insert(
+            object, position, true
+          );
+        ({ start, length } = res);
+      } else {
+        const raw = this.store.stringify(object);
+        start = position + 1 + this.store.indent;
+        length = raw.length;
+        output.push(raw);
+      }
       position = start + length + 1;
+      if (!startPosition)
+        startPosition = position;
       for (const { field, key } of this.indexedFields) {
         const value = Database.getField(object, field);
         if (value == undefined)
@@ -108,6 +122,11 @@ class Database<T extends Record = Record> {
         objectFields.push({ field, value: key(value), position: start });
       }
     }
+
+    this.store.appendRaw(
+      this.store.joinForAppend(output),
+      startPosition
+    );
 
     await this.index.insert(objectFields);
 

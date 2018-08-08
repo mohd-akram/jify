@@ -36,15 +36,20 @@ class Index {
       await this.store.open();
 
     const headPosCache: { [field: string]: number } = {};
-    const cache: IndexCache = {};
+    const cache: IndexCache = new Map();
 
     const updates = new Set<number>();
 
     let position = -1;
     for (const objectField of objectFields) {
-      const head = cache[headPosCache[objectField.field]] ||
-        this.getHead(objectField.field, cache);
-      headPosCache[objectField.field] = head.position;
+      const cachedHeadPos = headPosCache[objectField.field];
+      let head: IndexEntry;
+      if (cachedHeadPos)
+        head = cache.get(cachedHeadPos)!;
+      else {
+        head = this.getHead(objectField.field, cache);
+        headPosCache[objectField.field] = head.position;
+      }
       const positions = this.indexObjectField(
         objectField, head!, position, cache
       );
@@ -53,7 +58,9 @@ class Index {
       --position;
     }
 
+    let startPosition = 0;
     let insertPosition: number | undefined;
+    const output: string[] = [];
 
     const insert = async (entry: IndexEntry) => {
       const stack = [entry];
@@ -67,20 +74,22 @@ class Index {
           const pos = entry.node.levels[i];
           if (pos >= 0)
             continue;
-          entry.node.levels[i] = cache[pos].position;
-          if (pos != cache[pos].position)
+          const next = cache.get(pos)!;
+          entry.node.levels[i] = next.position;
+          if (pos != next.position)
             continue;
           if (!pending)
             stack.push(entry);
-          stack.push(cache[pos]);
+          stack.push(next);
           pending = true;
         }
 
         if (entry.link < 0) {
-          const link = cache[entry.link].position;
+          const next = cache.get(entry.link)!;
+          const link = next.position;
           if (entry.link == link) {
             stack.push(entry);
-            stack.push(cache[link]);
+            stack.push(next);
             pending = true;
           }
           entry.link = link;
@@ -88,23 +97,39 @@ class Index {
 
         if (!pending) {
           updates.delete(entry.position);
-          insertPosition = await this.insertEntry(entry, cache, insertPosition);
+          if (insertPosition) {
+            const raw = this.store.stringify(entry.serialized());
+            const start = insertPosition + 1;
+            const length = raw.length;
+            insertPosition = start + length + 1;
+            entry.position = start;
+            if (cache)
+              cache.set(entry.position, entry);
+            output.push(raw);
+          } else {
+            insertPosition = await this.insertEntry(entry, cache);
+          }
+          if (!startPosition)
+            startPosition = insertPosition;
         }
       }
     };
 
     for (let i = -1; i > position; i--)
-      await insert(cache[i]);
+      await insert(cache.get(i)!);
+    await this.store.appendRaw(
+      this.store.joinForAppend(output), startPosition
+    );
 
     for (const pos of updates) {
-      const entry = cache[pos];
+      const entry = cache.get(pos)!;
       for (let i = 0; i < entry.node.levels.length; i++) {
         const p = entry.node.levels[i];
         if (p < 0)
-          entry.node.levels[i] = cache[p].position;
+          entry.node.levels[i] = cache.get(p)!.position;
       }
       if (entry.link < 0)
-        entry.link = cache[entry.link].position;
+        entry.link = cache.get(entry.link)!.position;
       await this.updateEntry(entry);
     }
 
@@ -118,7 +143,7 @@ class Index {
   ) {
     const { field, value, position } = objectField;
 
-    cache = cache || {};
+    cache = cache || new Map();
 
     let height = head.node.levels.filter(p => p != 0).length;
 
@@ -135,9 +160,9 @@ class Index {
     let current = head;
 
     for (let i = height - 1; i >= 0; i--) {
-      while (current.node.next(i)) {
-        const next = cache[current.node.next(i)] ||
-          this.getEntry(current.node.next(i), cache);
+      let nextNodePos: number;
+      while (nextNodePos = current.node.next(i)) {
+        const next = this.getEntry(nextNodePos, cache);
         if (next.node.value! <= value)
           current = next;
         if (next.node.value! >= value)
@@ -160,7 +185,7 @@ class Index {
       );
 
     entry.position = entryPosition; // placeholder position
-    cache[entry.position] = entry;
+    cache.set(entry.position, entry);
 
     if (isDuplicate) {
       entry.link = prev.link;
@@ -225,13 +250,14 @@ class Index {
   }
 
   protected getRootEntry(cache?: IndexCache) {
-    if (cache && 0 in cache)
-      return cache[0];
+    const cached = cache && cache.get(0);
+    if (cached)
+      return cached;
     const { start, value } = this.store.getSync(1);
     const entry = new IndexEntry(value);
     entry.position = start;
     if (cache)
-      cache[0] = entry;
+      cache.set(0, entry);
     return entry;
   }
 
@@ -239,7 +265,7 @@ class Index {
     const entry = new IndexEntry("", 0, new SkipListNode([]));
     await this.insertEntry(entry);
     if (cache)
-      cache[0] = entry;
+      cache.set(0, entry);
     return entry;
   }
 
@@ -251,18 +277,19 @@ class Index {
     );
     entry.position = start;
     if (cache)
-      cache[entry.position] = entry;
+      cache.set(entry.position, entry);
     return start + length + 1;
   }
 
   protected getEntry(position: number, cache?: IndexCache) {
-    if (cache && position in cache)
-      return cache[position];
+    const cached = cache && cache.get(position);
+    if (cached)
+      return cached;
     const { start, value } = this.store.getSync(position);
     const entry = new IndexEntry(value);
     entry.position = start;
     if (cache)
-      cache[entry.position] = entry;
+      cache.set(entry.position, entry);
     return entry;
   }
 
@@ -278,7 +305,7 @@ class Index {
     if (!alreadyOpen)
       await this.store.open();
 
-    const cache: { [postion: number]: IndexEntry } = {};
+    const cache: IndexCache = new Map();
 
     const head = this.getHead(field, cache);
     const height = head.node.levels.filter(p => p != 0).length;
@@ -461,8 +488,6 @@ export interface ObjectField {
   position: number;
 }
 
-export interface IndexCache {
-  [postion: number]: IndexEntry;
-}
+export type IndexCache = Map<number, IndexEntry>;
 
 export default Index;

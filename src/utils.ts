@@ -181,10 +181,11 @@ export function* readSync(
   }
 }
 
+// Allocating buffers is expensive, so preallocate one
+const uint32Buffer = Buffer.alloc(4);
 export function z85EncodeAsUInt32(number: number, pad = true) {
-  const buffer = Buffer.alloc(4);
-  buffer.writeUInt32BE(number, 0);
-  const encoded = z85.encode(buffer);
+  uint32Buffer.writeUInt32BE(number, 0);
+  const encoded = z85.encode(uint32Buffer);
   return pad ? encoded : (encoded.replace(/^0+/, '') || '0');
 }
 
@@ -194,10 +195,10 @@ export function z85DecodeAsUInt32(string: string) {
   return z85.decode(string.padStart(5, '0')).readUInt32BE(0);
 }
 
+const doubleBuffer = Buffer.alloc(8);
 export function z85EncodeAsDouble(number: number, pad = true) {
-  const buffer = Buffer.alloc(8);
-  buffer.writeDoubleBE(number, 0);
-  const encoded = z85.encode(buffer);
+  doubleBuffer.writeDoubleBE(number, 0);
+  const encoded = z85.encode(doubleBuffer);
   return pad ? encoded : (encoded.replace(/0+$/, '') || '0');
 }
 
