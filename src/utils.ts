@@ -1,4 +1,6 @@
+import { Console } from 'console';
 import * as fs from 'fs';
+import { Writable } from 'stream';
 import * as util from 'util';
 
 import * as z85 from 'z85';
@@ -316,4 +318,29 @@ export function z85DecodeAsDouble(string: string, compact = false) {
     throw new Error('Cannot decode string longer than 5 characters');
   const decoded = z85.decode(compact ? string.padEnd(10, '0') : string);
   return decoded.readDoubleBE(0);
+}
+
+class Out extends Writable {
+  constructor(protected label: string) { super(); }
+  _write(chunk: string, _: string, callback: (error?: Error | null) => void) {
+    process.stdout.write(`${this.label}: ${chunk}`);
+    if (callback)
+      callback(null);
+  }
+}
+class Err extends Writable {
+  constructor(protected label: string) { super(); }
+  _write(chunk: string, _: string, callback: (error?: Error | null) => void) {
+    process.stderr.write(`${this.label}: ${chunk}`);
+    if (callback)
+      callback(null);
+  }
+}
+
+const dummyConsole = new Console(new Writable);
+
+export function logger(name: string, log?: boolean) {
+  if (log == null)
+    log = Boolean(process.env.DEBUG);
+  return log ? new Console(new Out(name), new Err(name)) : dummyConsole;
 }

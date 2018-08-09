@@ -2,6 +2,9 @@ import * as assert from 'assert';
 
 import Database, { Record } from '../src/database';
 import { IndexField } from '../src/index';
+import * as utils from '../src/utils';
+
+const logger = utils.logger('test');
 
 function getField(object: Record, field: string) {
   let value: any = object;
@@ -41,7 +44,7 @@ async function testInserts(
   size = Math.min(size, n);
   const objects = Array(size);
 
-  console.time(`insert ${n} objects`);
+  logger.time(`insert ${n} objects`);
   for (let i = 0; i < n; i++) {
     objects[i % size] = value(i);
     if ((i + 1) % size == 0)
@@ -49,7 +52,7 @@ async function testInserts(
   }
   if (n % size != 0)
     await db.insert(objects.slice(0, n % size));
-  console.timeEnd(`insert ${n} objects`);
+  logger.timeEnd(`insert ${n} objects`);
 }
 
 async function testFind(
@@ -58,10 +61,10 @@ async function testFind(
 ) {
   for (let i = 0; i < n; i++) {
     const val = value(i);
-    console.time(`find ${field}=${val}`);
+    logger.time(`find ${field}=${val}`);
     const objects = await db.find({ [field]: val });
-    console.timeEnd(`find ${field}=${val}`);
-    console.log(`${objects.length} results`);
+    logger.timeEnd(`find ${field}=${val}`);
+    logger.log(`${objects.length} results`);
     assert.equal(objects.length, count(val));
     for (const obj of objects)
       assert.equal(getField(obj, field), val);
@@ -69,8 +72,9 @@ async function testFind(
 }
 
 async function main() {
-  const n = Number(process.argv[2]) || 10_000;
-  const size = Number(process.argv[3]) || 100_000;
+  const args = process.argv.slice(2);
+  const n = Number(args.shift()) || 10_000;
+  const size = Number(args.shift()) || 100_000;
   const count = Math.min(n, 20);
 
   const fields = [

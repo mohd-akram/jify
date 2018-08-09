@@ -1,6 +1,7 @@
 import JSONStore from './json-store';
 import { Predicate } from './query';
 import {
+  logger,
   z85DecodeAsUInt32, z85EncodeAsUInt32,
   z85DecodeAsDouble, z85EncodeAsDouble
 } from './utils';
@@ -8,6 +9,7 @@ import {
 class Index {
   protected store: JSONStore<SerializedIndexEntry>;
   protected maxHeight = 32;
+  protected logger = logger('index');
 
   constructor(public filename: string) {
     this.store = new JSONStore(filename, 0);
@@ -110,6 +112,7 @@ class Index {
     const inserts: IndexEntry[] = [];
     const updates = new Set<number>();
 
+    this.logger.time(`traversing index entries - ${fieldName}`);
     for (const objectField of objectFields) {
       const positions = await this.indexObjectField(
         objectField, head!, cache, inserts
@@ -118,6 +121,7 @@ class Index {
         if (position > 0)
           updates.add(position);
     }
+    this.logger.timeEnd(`traversing index entries - ${fieldName}`);
 
     // Lock writes completely until we're done to ensure the append position
     // remains correct
@@ -144,6 +148,7 @@ class Index {
       pendingRaw.push(raw);
     };
 
+    this.logger.time(`inserting index entries - ${fieldName}`);
     for (let i = 0; i < inserts.length; i++) {
       const entry = inserts[i];
       // Insert all the duplicates first so that the main entry can link
@@ -168,6 +173,7 @@ class Index {
         process(entry);
       }
     }
+    this.logger.timeEnd(`inserting index entries - ${fieldName}`);
 
     if (pendingRaw.length)
       await this.store.appendRaw(
@@ -182,6 +188,7 @@ class Index {
       cache.set(entry.position, entry);
     }
 
+    this.logger.time(`updating index entries - ${fieldName}`);
     for (const pos of updates) {
       const entry = cache.get(pos)!;
       for (let i = 0; i < entry.node.levels.length; i++) {
@@ -193,6 +200,7 @@ class Index {
         entry.link = inserts[-entry.link - 1].position;
       await this.updateEntry(entry);
     }
+    this.logger.timeEnd(`updating index entries - ${fieldName}`);
 
     await this.unlockHead(head);
 

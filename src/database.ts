@@ -4,10 +4,12 @@ import * as child_process from 'child_process';
 import Index, { IndexField, ObjectField } from './index';
 import JSONStore from './json-store';
 import { Query } from './query';
+import { logger } from './utils';
 
 class Database<T extends Record = Record> {
   protected store: JSONStore<T>;
   protected _index: Index;
+  protected logger = logger('database');
 
   constructor(filename: string) {
     this.store = new JSONStore<T>(filename);
@@ -30,6 +32,7 @@ class Database<T extends Record = Record> {
     if (!alreadyOpen)
       await this.store.open();
 
+    this.logger.time('find');
     let positions: Set<number> | undefined;
     for (const field in query) {
       if (positions && !positions.size)
@@ -67,12 +70,15 @@ class Database<T extends Record = Record> {
       positions = intersection;
     }
     positions = positions || new Set();
+    this.logger.timeEnd('find');
 
+    this.logger.time('fetch');
     const objects: T[] = [];
     for (const pos of positions) {
       const obj = (await this.store.get(pos)).value;
       objects.push(obj);
     }
+    this.logger.timeEnd('fetch');
 
     if (!alreadyOpen)
       await this.store.close();
@@ -111,6 +117,7 @@ class Database<T extends Record = Record> {
 
     const offset = this.store.joiner.length;
 
+    this.logger.time('inserts');
     for (const object of objects) {
       const start = insertPosition + offset;
 
@@ -128,6 +135,7 @@ class Database<T extends Record = Record> {
           objectFieldsMap[o.name] = [o];
       }
     }
+    this.logger.timeEnd('inserts');
 
     if (pendingRaw.length)
       await this.store.appendRaw(
@@ -138,6 +146,7 @@ class Database<T extends Record = Record> {
     if (!alreadyOpen)
       await this.store.close();
 
+    this.logger.time('indexing');
     if (indexFields.length) {
       await this._index.open();
       await Promise.all(Object.values(objectFieldsMap).map(
@@ -145,6 +154,7 @@ class Database<T extends Record = Record> {
       );
       await this._index.close();
     }
+    this.logger.timeEnd('indexing');
 
     for (const { name } of indexFields)
       await this._index.endTransaction(name);
@@ -210,8 +220,10 @@ class Database<T extends Record = Record> {
     const alreadyOpen = this.store.isOpen;
     if (!alreadyOpen)
       await this.store.open();
+    this.logger.time('read records');
     for await (const [pos, object] of this.store.getAll())
       subprocess.send(this.getObjectFields(object, pos, indexFields));
+    this.logger.timeEnd('read records');
     if (!alreadyOpen)
       await this.store.close();
 

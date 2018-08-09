@@ -4,7 +4,7 @@ import { promisify } from 'util';
 
 import { lock, unlock } from 'os-lock';
 
-import { read } from './utils';
+import { logger, read } from './utils';
 
 const fsOpen = promisify(fs.open);
 const fsClose = promisify(fs.close);
@@ -14,6 +14,10 @@ class File extends EventEmitter {
   protected fd: number | null = null;
   protected lockedPositions =
     new Map<number, { exclusive: boolean, count: number }>();
+  protected logger = logger('file');
+
+  protected reads = 0;
+  protected writes = 0;
 
   constructor(protected filename: string) {
     super();
@@ -24,12 +28,14 @@ class File extends EventEmitter {
   }
 
   read(position: number, reverse = false) {
+    ++this.reads;
     if (!this.fd)
       throw new Error('Need to call open() before read()');
     return read(this.fd, position, reverse);
   }
 
   async write(position: number, text: string) {
+    ++this.writes;
     const alreadyOpen = this.isOpen;
     if (!alreadyOpen)
       await this.open();
@@ -74,6 +80,7 @@ class File extends EventEmitter {
   }
 
   async open(mode = 'r+') {
+    this.logger.log('opening', this.filename);
     if (this.isOpen)
       throw new Error('File already open');
     this.fd = await fsOpen(this.filename, mode);
@@ -86,10 +93,15 @@ class File extends EventEmitter {
   }
 
   async close() {
+    this.logger.log('closing', this.filename);
+    this.logger.log('reads', this.reads);
+    this.logger.log('writes', this.writes);
     if (!this.fd)
       throw new Error('No open file to close');
     await fsClose(this.fd);
     this.fd = null;
+    this.reads = 0;
+    this.writes = 0;
   }
 
   closeSync() {
