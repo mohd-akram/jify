@@ -44,6 +44,30 @@ class JSONStore<T extends object = object> implements Store<T> {
     return { value: value as T, start, length };
   }
 
+  *getAllSync() {
+    const alreadyOpen = this.file.isOpen;
+    if (!alreadyOpen)
+      this.file.openSync();
+
+    const stream = this.file.readSync(0);
+
+    function* start(i: number, char: string) {
+      yield [i, char] as [number, string];
+      yield* stream;
+    }
+
+    try {
+      for (const [i, char] of stream) {
+        if (char != '{')
+          continue;
+        yield [i, readJSONSync(start(i, char)).value];
+      }
+    } finally {
+      if (!alreadyOpen)
+        this.file.closeSync();
+    }
+  }
+
   getSync(position: number) {
     const { value, start, length } =
       readJSONSync(this.file.readSync(position));
@@ -65,7 +89,7 @@ class JSONStore<T extends object = object> implements Store<T> {
     await this.file.clear(start, length + Number(!last));
   }
 
-  async insert(data: T, position?: number, last = false) {
+  async insert(data: T, position?: number) {
     const alreadyOpen = this.file.isOpen;
 
     const dataString = this.stringify(data);
@@ -86,7 +110,7 @@ class JSONStore<T extends object = object> implements Store<T> {
       };
     }
 
-    if (position != null && !last) {
+    if (position != null) {
       let start = position;
       if (position > 0) {
         for (const [i, char] of this.file.readSync(position - 1, true)) {
@@ -132,7 +156,15 @@ class JSONStore<T extends object = object> implements Store<T> {
     }
   }
 
+  async append(data: T, position?: number) {
+    const dataString = this.stringify(data);
+    return await this.appendRaw(dataString, position);
+  }
+
   async appendRaw(dataString: string, position?: number) {
+    if (!dataString)
+      throw new Error('Cannot append empty string');
+
     let isFirst = false;
 
     if (!position) {
@@ -201,6 +233,10 @@ class JSONStore<T extends object = object> implements Store<T> {
     }
 
     return pos;
+  }
+
+  async lastModified() {
+    return (await this.file.stat()).mtime;
   }
 
   stringify(data: T) {

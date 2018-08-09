@@ -5,7 +5,7 @@ import * as z85 from 'z85';
 export function readJSONSync(
   stream: IterableIterator<[number, string]>, parse = true
 ) {
-  const chars = [];
+  const chars: string[] = [];
 
   let type: string | undefined;
   let start = -1;
@@ -183,27 +183,29 @@ export function* readSync(
 
 // Allocating buffers is expensive, so preallocate one
 const uint32Buffer = Buffer.alloc(4);
-export function z85EncodeAsUInt32(number: number, pad = true) {
+export function z85EncodeAsUInt32(number: number, compact = false) {
   uint32Buffer.writeUInt32BE(number, 0);
   const encoded = z85.encode(uint32Buffer);
-  return pad ? encoded : (encoded.replace(/^0+/, '') || '0');
+  return compact ? encoded.replace(/^0+/, '') : encoded;
 }
 
-export function z85DecodeAsUInt32(string: string) {
+export function z85DecodeAsUInt32(string: string, compact = false) {
   if (string.length > 5)
     throw new Error('Cannot decode string longer than 5 characters');
-  return z85.decode(string.padStart(5, '0')).readUInt32BE(0);
+  const decoded = z85.decode(compact ? string.padStart(5, '0') : string);
+  return decoded.readUInt32BE(0);
 }
 
 const doubleBuffer = Buffer.alloc(8);
-export function z85EncodeAsDouble(number: number, pad = true) {
+export function z85EncodeAsDouble(number: number, compact = false) {
   doubleBuffer.writeDoubleBE(number, 0);
   const encoded = z85.encode(doubleBuffer);
-  return pad ? encoded : (encoded.replace(/0+$/, '') || '0');
+  return compact ? encoded.replace(/0+$/, '') : encoded;
 }
 
-export function z85DecodeAsDouble(string: string) {
+export function z85DecodeAsDouble(string: string, compact = false) {
   if (string.length > 10)
     throw new Error('Cannot decode string longer than 5 characters');
-  return z85.decode(string.padEnd(10, '0')).readDoubleBE(0);
+  const decoded = z85.decode(compact ? string.padEnd(10, '0') : string);
+  return decoded.readDoubleBE(0);
 }

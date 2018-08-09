@@ -1,31 +1,27 @@
 import * as path from 'path';
 
-import Index from './index';
+import Index, { IndexField, ObjectField } from './index';
 import JSONStore from './json-store';
 import { Query } from './query';
 
 class Database<T extends Record = Record> {
   protected store: JSONStore<T>;
-  protected index: Index;
-  protected indexedFields: IndexField[];
+  protected _index: Index;
 
-  constructor(filename: string, indexedFields: (string | IndexField)[] = []) {
+  constructor(filename: string) {
     this.store = new JSONStore<T>(filename);
 
     const dirname = path.dirname(filename);
     const ext = path.extname(filename);
     const basename = path.basename(filename, ext);
     const indexFilename = `${path.join(dirname, basename)}.index${ext}`;
-    this.index = new Index(indexFilename);
-
-    this.indexedFields = indexedFields.map(
-      f => typeof f == 'string' ? { field: f, key: (v: any) => v } : f
-    );
+    this._index = new Index(indexFilename);
   }
 
-  async create() {
+  async create(indexFields: (string | IndexField)[] = []) {
     await this.store.create();
-    await this.index.create(this.indexedFields.map(f => f.field));
+    await this._index.create();
+    await this._index.addFields(this.normalizeIndexFields(indexFields));
   }
 
   async find(query: Query) {
@@ -38,22 +34,23 @@ class Database<T extends Record = Record> {
       if (positions && !positions.size)
         break;
 
-      const indexField = this.indexedFields.find(f => f.field == field);
-      if (!indexField)
-        throw new Error(`Field "${field}" not indexed`);
-
       let predicate = query[field];
-      if (typeof predicate == 'function') {
-        predicate.key = indexField.key;
-      } else {
-        const start = indexField.key(predicate);
-        predicate = (value: any) => ({
-          seek: value < start ? -1 : value > start ? 1 : 0,
-          match: value == start
-        });
+      if (typeof predicate != 'function') {
+        let start = predicate;
+        let converted = false;
+        predicate = (value: any) => {
+          if (predicate.key && !converted) {
+            start = predicate.key(start);
+            converted = true;
+          }
+          return {
+            seek: value < start ? -1 : value > start ? 1 : 0,
+            match: value == start
+          };
+        };
       }
 
-      const fieldPositions = await this.index.find(field, predicate);
+      const fieldPositions = await this._index.find(field, predicate);
 
       if (!positions) {
         positions = new Set(fieldPositions);
@@ -70,7 +67,7 @@ class Database<T extends Record = Record> {
     }
     positions = positions || new Set();
 
-    const objects = [];
+    const objects: T[] = [];
     for (const pos of positions) {
       const obj = (await this.store.get(pos)).value;
       objects.push(obj);
@@ -86,62 +83,158 @@ class Database<T extends Record = Record> {
     if (!Array.isArray(objects))
       objects = [objects];
 
+    if (!objects.length)
+      return;
+
+    let indexFields: IndexField[] = [];
+    try {
+      indexFields = await this._index.getFields();
+    } catch (e) {
+      if (e.code != 'ENOENT')
+        throw e;
+    }
+
     const alreadyOpen = this.store.isOpen;
     if (!alreadyOpen)
       await this.store.open();
 
-    const objectFields = [];
+    const objectFields: ObjectField[] = [];
 
     let startPosition: number | undefined;
     let position: number | undefined;
-    let output: string[] = [];
+    let pendingRaw: string[] = [];
 
     for (const object of objects) {
-      // TypeScript needs some help to get the type
       let start: number;
       let length: number;
       if (!position) {
-        const res: { start: number, length: number, raw: string } =
-          await this.store.insert(
-            object, position, true
-          );
-        ({ start, length } = res);
+        ({ start, length } = await this.store.append(object));
       } else {
         const raw = this.store.stringify(object);
         start = position + 1 + this.store.indent;
         length = raw.length;
-        output.push(raw);
+        pendingRaw.push(raw);
       }
+
       position = start + length + 1;
       if (!startPosition)
         startPosition = position;
-      for (const { field, key } of this.indexedFields) {
-        const value = Database.getField(object, field);
-        if (value == undefined)
-          continue;
-        objectFields.push({ field, value: key(value), position: start });
-      }
+
+      objectFields.push(
+        ...this.getObjectFields(object, start, indexFields)
+      );
     }
 
-    this.store.appendRaw(
-      this.store.joinForAppend(output),
-      startPosition
-    );
+    if (pendingRaw.length)
+      this.store.appendRaw(
+        this.store.joinForAppend(pendingRaw),
+        startPosition
+      );
 
-    await this.index.insert(objectFields);
+    await this._index.insert(objectFields);
 
     if (!alreadyOpen)
       await this.store.close();
   }
 
+  async index(...fields: (string | IndexField)[]) {
+    let indexOutdated = false;
+    let indexExists = true;
+
+    try {
+      indexOutdated = await this.isIndexOutdated();
+    } catch (e) {
+      if (e.code != 'ENOENT')
+        throw e;
+      indexExists = false;
+    }
+
+    let currentIndexFields = new Map<string, IndexField>();
+
+    if (indexExists)
+      currentIndexFields = new Map(
+        (await this._index.getFields()).map(
+          f => [f.name, f] as [string, IndexField]
+        )
+      );
+    if (indexOutdated) {
+      await this._index.drop();
+      indexExists = false;
+    }
+    if (!indexExists)
+      await this._index.create();
+
+    const newIndexFields = new Map<string, IndexField>();
+    for (const field of this.normalizeIndexFields(fields))
+      if (!currentIndexFields.has(field.name))
+        newIndexFields.set(field.name, field);
+
+    const indexFields = Array.from(
+      (indexOutdated ? new Map([...currentIndexFields, ...newIndexFields])
+        : newIndexFields).values()
+    );
+
+    if (!indexFields.length)
+      return;
+
+    const alreadyOpen = this.store.isOpen;
+    if (!alreadyOpen)
+      await this.store.open();
+    const objectFields: ObjectField[] = [];
+    for (const [pos, object] of this.store.getAllSync()) {
+      objectFields.push(
+        ...this.getObjectFields(object, pos, indexFields)
+      );
+    }
+    if (!alreadyOpen)
+      await this.store.close();
+
+    await this._index.addFields(indexFields);
+    await this._index.insert(objectFields);
+  }
+
   async drop() {
     await this.store.destroy();
     try {
-      await this.index.drop();
+      await this._index.drop();
     } catch (e) {
       if (e.code != 'ENOENT')
         throw e;
     }
+  }
+
+  protected async isIndexOutdated() {
+    const [dbModified, indexModified] = await Promise.all([
+      this.store.lastModified(),
+      this._index.lastModified()
+    ]);
+    return indexModified < dbModified;
+  }
+
+  protected getObjectFields(
+    object: Record, position: number, fields: IndexField[]
+  ) {
+    const objectFields: ObjectField[] = [];
+    for (const { name } of fields) {
+      const value = Database.getField(object, name);
+      if (value == undefined)
+        continue;
+      objectFields.push({ name, value, position });
+    }
+    return objectFields;
+  }
+
+  protected normalizeIndexFields(
+    indexFields: (string | IndexField)[]
+  ): IndexField[] {
+    const map = new Map<string, IndexField>();
+    for (const f of indexFields) {
+      if (typeof f == 'string')
+        map.set(f, { name: f });
+      else
+        map.set(f.name, f);
+    }
+    return Array.from(map.values());
   }
 
   protected static getField(object: Record, field: string) {
@@ -157,11 +250,6 @@ class Database<T extends Record = Record> {
 
 export interface Record {
   [field: string]: any;
-}
-
-export interface IndexField {
-  field: string;
-  key: (value: any) => any;
 }
 
 export default Database;

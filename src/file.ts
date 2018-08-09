@@ -62,10 +62,20 @@ class File {
     await promisify(fs.unlink)(this.filename);
   }
 
+  async stat() {
+    return await promisify(fs.stat)(this.filename);
+  }
+
   async open(mode = 'r+') {
     if (this.isOpen)
       throw new Error('File already open');
     this.fd = await fsOpen(this.filename, mode);
+  }
+
+  openSync(mode = 'r+') {
+    if (this.isOpen)
+      throw new Error('File already open');
+    this.fd = fs.openSync(this.filename, mode);
   }
 
   async close() {
@@ -74,6 +84,13 @@ class File {
     await fsClose(this.fd);
     this.fd = null;
   }
+
+  closeSync() {
+    if (!this.fd)
+      throw new Error('No open file to close');
+    fs.closeSync(this.fd);
+  }
+
 }
 
 export default File;

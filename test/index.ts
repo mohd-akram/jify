@@ -2,6 +2,7 @@ import * as assert from 'assert';
 
 import Database from '..';
 import { Record } from '../src/database';
+import { IndexField } from '../src/index';
 
 function getField(object: Record, field: string) {
   let value: any = object;
@@ -26,15 +27,17 @@ function fillArray(n: number, value: (i: number) => any) {
 }
 
 async function testInserts(
-  db: Database, n = 1000, value: (i: number) => Record
+  db: Database, fields: (string | IndexField)[],
+  n = 1000, value: (i: number) => Record
 ) {
   try {
     await db.drop();
-  } catch (e) { }
+  } catch (e) {
+    if (e.code != 'ENOENT')
+      throw e;
+  }
 
-  try {
-    await db.create();
-  } catch (e) { }
+  await db.create(fields);
 
   const size = Math.min(100_000, n);
   const objects = Array(size);
@@ -69,9 +72,9 @@ async function testFind(
 async function main() {
   const n = Number(process.argv[2]) || 10_000;
   const fields = [
-    'id', 'person.age', { field: 'created', key: (v: any) => Date.parse(v) }
+    'id', 'person.age', { name: 'created', type: 'date-time' }
   ];
-  const db = new Database(`${__dirname}/data/data-insert-${n}.json`, fields);
+  const db = new Database(`${__dirname}/data/data-insert-${n}.json`);
 
   const { array: ids, count: idsCount } =
     fillArray(n, _ => Math.random().toString(36));
@@ -82,7 +85,7 @@ async function main() {
       new Date(+(new Date()) - Math.floor(Math.random() * 1e10)).toISOString()
     );
 
-  await testInserts(db, n, i => ({
+  await testInserts(db, fields, n, i => ({
     id: ids[i], person: { age: ages[i] }, created: dates[i]
   }));
   await testFind(
