@@ -1,4 +1,5 @@
 import File from './file';
+import Store from './store';
 import { readJSONSync } from './utils';
 
 class JSONStore<T extends object = object> implements Store<T> {
@@ -77,7 +78,7 @@ class JSONStore<T extends object = object> implements Store<T> {
   async remove(position: number) {
     const { start, length } = readJSONSync(this.file.readSync(position), false);
     let last = false;
-    for (const [_, char] of this.file.readSync(start + length)) {
+    for (const [, char] of this.file.readSync(start + length)) {
       if (char == ' ' || char == '\n')
         continue;
       else {

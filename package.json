@@ -2,9 +2,11 @@
   "name": "jify",
   "version": "0.0.1",
   "description": "An indexed JSON file database",
-  "main": "index.js",
+  "main": "lib/main.js",
   "scripts": {
-    "test": "node test"
+    "build": "tsc",
+    "lint": "tslint -p .",
+    "test": "ts-node --files test"
   },
   "repository": {
     "type": "git",
@@ -21,7 +23,8 @@
   },
   "homepage": "https://github.com/mohd-akram/jify#readme",
   "devDependencies": {
-    "@types/node": "^10.5.7",
+    "@types/node": "^10.5.8",
+    "ts-node": "^7.0.1",
     "tslint": "^5.11.0",
     "typescript": "^3.0.1"
   },

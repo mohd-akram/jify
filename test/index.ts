@@ -1,7 +1,6 @@
 import * as assert from 'assert';
 
-import Database from '..';
-import { Record } from '../src/database';
+import Database, { Record } from '../src/database';
 import { IndexField } from '../src/index';
 
 function getField(object: Record, field: string) {

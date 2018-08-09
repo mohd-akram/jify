@@ -1,4 +1,7 @@
 {
+  "include": [
+    "src"
+  ],
   "compilerOptions": {
     "declaration": true,
     "module": "commonjs",
@@ -6,6 +9,7 @@
     "noImplicitReturns": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
+    "outDir": "lib",
     "sourceMap": true,
     "strict": true,
     "target": "es2017"
