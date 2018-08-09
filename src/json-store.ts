@@ -172,7 +172,7 @@ class JSONStore<T extends object = object> implements Store<T> {
         if (char == ' ' || char == '\n')
           continue;
         if (!position)
-          position = i;
+          position = i - 1;
         else {
           if (char == '[')
             isFirst = true;
@@ -181,13 +181,14 @@ class JSONStore<T extends object = object> implements Store<T> {
       }
     }
 
+    const joiner = isFirst ? this.joiner.slice(1) : this.joiner;
+
     await this.file.write(
-      position! - 1,
-      `${isFirst ? '' : ','}\n${' '.repeat(this.indent)}${dataString}\n]\n`,
+      position!, `${joiner}${dataString}\n]\n`,
     );
 
     return {
-      start: position! + Number(!isFirst) + this.indent,
+      start: position! + joiner.length,
       length: dataString.length,
       raw: dataString
     };
@@ -246,9 +247,8 @@ class JSONStore<T extends object = object> implements Store<T> {
     return str;
   }
 
-  joinForAppend(dataStrings: string[]) {
-    const indent = ' '.repeat(this.indent);
-    return dataStrings.join(`,\n${indent}`);
+  get joiner() {
+    return `,\n${' '.repeat(this.indent)}`;
   }
 }
 

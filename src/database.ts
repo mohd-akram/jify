@@ -104,6 +104,8 @@ class Database<T extends Record = Record> {
     let position: number | undefined;
     let pendingRaw: string[] = [];
 
+    const offset = this.store.joiner.length;
+
     for (const object of objects) {
       let start: number;
       let length: number;
@@ -111,12 +113,12 @@ class Database<T extends Record = Record> {
         ({ start, length } = await this.store.append(object));
       } else {
         const raw = this.store.stringify(object);
-        start = position + 1 + this.store.indent;
+        start = position + offset;
         length = raw.length;
         pendingRaw.push(raw);
       }
 
-      position = start + length + 1;
+      position = start + length;
       if (!startPosition)
         startPosition = position;
 
@@ -126,9 +128,8 @@ class Database<T extends Record = Record> {
     }
 
     if (pendingRaw.length)
-      this.store.appendRaw(
-        this.store.joinForAppend(pendingRaw),
-        startPosition
+      await this.store.appendRaw(
+        pendingRaw.join(this.store.joiner), startPosition
       );
 
     await this._index.insert(objectFields);

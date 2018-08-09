@@ -79,6 +79,8 @@ class Index {
     let insertPosition: number | undefined;
     const pendingRaw: string[] = [];
 
+    const offset = this.store.joiner.length;
+
     const insert = async (entry: IndexEntry) => {
       const stack = [entry];
       while (stack.length) {
@@ -116,9 +118,9 @@ class Index {
           updates.delete(entry.position);
           if (insertPosition) {
             const raw = this.store.stringify(entry.serialized());
-            const start = insertPosition + 1;
+            const start = insertPosition + offset;
             const length = raw.length;
-            insertPosition = start + length + 1;
+            insertPosition = start + length;
             entry.position = start;
             if (cache)
               cache.set(entry.position, entry);
@@ -137,7 +139,7 @@ class Index {
 
     if (pendingRaw.length)
       await this.store.appendRaw(
-        this.store.joinForAppend(pendingRaw), startPosition
+        pendingRaw.join(this.store.joiner), startPosition
       );
 
     for (const pos of updates) {
@@ -322,7 +324,7 @@ class Index {
     entry.position = start;
     if (cache)
       cache.set(entry.position, entry);
-    return start + length + 1;
+    return start + length;
   }
 
   protected getEntry(position: number, cache?: IndexCache) {
