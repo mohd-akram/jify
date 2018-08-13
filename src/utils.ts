@@ -2,7 +2,7 @@ import * as fs from 'fs';
 
 import * as z85 from 'z85';
 
-export function readJSONSync(
+export function readJSON(
   stream: IterableIterator<[number, string]>, parse = true
 ) {
   const chars: string[] = [];
@@ -12,7 +12,7 @@ export function readJSONSync(
   let length = 0;
   let depth = 0;
   let inString = false;
-  let prevChar: string | undefined;
+  let escaping = false;
 
   for (const [i, char] of stream) {
     if (start == -1) {
@@ -29,15 +29,18 @@ export function readJSONSync(
       }
     }
 
-    const isStringQuote = char == '"' && prevChar != '\\';
-
-    if (isStringQuote)
-      inString = !inString;
-
     ++length;
     if (parse)
       chars.push(char);
-    prevChar = char;
+
+    const isStringQuote = char == '"' && !escaping;
+    if (escaping)
+      escaping = false;
+    else if (char == '\\')
+      escaping = true;
+
+    if (isStringQuote)
+      inString = !inString;
 
     if (inString && type != 'string')
       continue;

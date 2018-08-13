@@ -1,6 +1,6 @@
 import File from './file';
 import Store from './store';
-import { readJSONSync } from './utils';
+import { readJSON } from './utils';
 
 class JSONStore<T extends object = object> implements Store<T> {
   protected file: File;
@@ -37,7 +37,7 @@ class JSONStore<T extends object = object> implements Store<T> {
       await this.file.open();
 
     const { value, start, length } =
-      readJSONSync(this.file.readSync(position));
+      readJSON(this.file.readSync(position));
 
     if (!alreadyOpen)
       await this.file.close();
@@ -61,7 +61,7 @@ class JSONStore<T extends object = object> implements Store<T> {
       for (const [i, char] of stream) {
         if (char != '{')
           continue;
-        yield [i, readJSONSync(start(i, char)).value];
+        yield [i, readJSON(start(i, char)).value];
       }
     } finally {
       if (!alreadyOpen)
@@ -71,12 +71,12 @@ class JSONStore<T extends object = object> implements Store<T> {
 
   getSync(position: number) {
     const { value, start, length } =
-      readJSONSync(this.file.readSync(position));
+      readJSON(this.file.readSync(position));
     return { value: value as T, start, length };
   }
 
   async remove(position: number) {
-    const { start, length } = readJSONSync(this.file.readSync(position), false);
+    const { start, length } = readJSON(this.file.readSync(position), false);
     let last = false;
     for (const [, char] of this.file.readSync(start + length)) {
       if (char == ' ' || char == '\n')
