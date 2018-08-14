@@ -37,7 +37,7 @@ class JSONStore<T extends object = object> implements Store<T> {
       await this.file.open();
 
     const { value, start, length } =
-      readJSON(this.file.readSync(position));
+      await readJSON(this.file.read(position));
 
     if (!alreadyOpen)
       await this.file.close();
@@ -45,16 +45,16 @@ class JSONStore<T extends object = object> implements Store<T> {
     return { value: value as T, start, length };
   }
 
-  *getAllSync() {
+  async *getAll() {
     const alreadyOpen = this.file.isOpen;
     if (!alreadyOpen)
-      this.file.openSync();
+      await this.file.open();
 
-    const stream = this.file.readSync(0);
+    const stream = this.file.read(0);
 
-    function* chain<T>(a: T, b: IterableIterator<T>) {
+    async function* chain<T>(a: T, b: AsyncIterableIterator<T>) {
       yield a;
-      yield* b;
+      yield* await b;
     }
 
     try {
@@ -63,7 +63,7 @@ class JSONStore<T extends object = object> implements Store<T> {
 
       while (true) {
         if (last >= chars.length - 1) {
-          const res = stream.next();
+          const res = await stream.next();
           if (res.done)
             break;
           chars = res.value;
@@ -79,7 +79,7 @@ class JSONStore<T extends object = object> implements Store<T> {
         if (last == chars.length)
           continue;
 
-        const result = readJSON(chain(chars, stream), last);
+        const result = await readJSON(chain(chars, stream), last);
 
         yield [result.start, result.value];
 
@@ -88,20 +88,14 @@ class JSONStore<T extends object = object> implements Store<T> {
       }
     } finally {
       if (!alreadyOpen)
-        this.file.closeSync();
+        await this.file.close();
     }
-  }
-
-  getSync(position: number) {
-    const { value, start, length } =
-      readJSON(this.file.readSync(position));
-    return { value: value as T, start, length };
   }
 
   async getAppendPosition() {
     let first = false;
     let position = 0;
-    for (const chars of this.file.readSync(-1, true)) {
+    for await (const chars of this.file.read(-1, true)) {
       for (const [i, charCode] of chars) {
         if (charCode == 32 || charCode == 10) // space or newline
           continue;

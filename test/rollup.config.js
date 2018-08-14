@@ -6,6 +6,6 @@ export default {
     format: 'cjs'
   },
   plugins: [
-    typescript({ compilerOptions: { target: 'ES2017' } })
+    typescript({ compilerOptions: { target: 'esnext' } })
   ]
 };

@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import * as util from 'util';
 
 import * as z85 from 'z85';
 
@@ -18,8 +19,8 @@ const enum Char {
   RightBracket = 93
 }
 
-export function readJSON(
-  stream: IterableIterator<[number, number][]>, pos = 0, parse = true
+export async function readJSON(
+  stream: AsyncIterableIterator<[number, number][]>, pos = 0, parse = true
 ) {
   const charCodes: number[] = [];
 
@@ -34,7 +35,7 @@ export function readJSON(
   let index = 0;
 
   let res: IteratorResult<[number, number][]>;
-  while (!(res = stream.next()).done) {
+  while (!(res = await stream.next()).done) {
     if (pos >= res.value.length) {
       pos -= res.value.length;
       continue;
@@ -207,12 +208,14 @@ function utf8charcode(buf: Buffer, i: number) {
   }
 }
 
-export function* readSync(
+const fstat = util.promisify(fs.fstat);
+const fread = util.promisify(fs.read);
+
+export async function* read(
   fd: number, position = 0, reverse = false, buffer?: Buffer
 ) {
-  // This function is synchronous because async generators are still too slow
   if (position < 0)
-    position += fs.fstatSync(fd).size;
+    position += (await fstat(fd)).size;
 
   buffer = buffer || Buffer.alloc(1 << 12);
   const size = buffer.length;
@@ -235,7 +238,7 @@ export function* readSync(
 
       pos = Math.max(pos, 0);
 
-      bytesRead = fs.readSync(fd, buffer, 0, length, pos);
+      ({ bytesRead } = await fread(fd, buffer, 0, length, pos));
 
       for (let i = 0; i < bytesRead;) {
         let index = reverse ? (bytesRead - i - 1) : i;

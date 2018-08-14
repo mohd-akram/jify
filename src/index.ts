@@ -60,14 +60,14 @@ class Index {
         head = cache.get(cachedHeadPos)!;
         info = cachedHeadInfo;
       } else {
-        head = this.getHead(objectField.name, cache);
+        head = await this.getHead(objectField.name, cache);
         headPosCache[objectField.name] = head.position;
         info = JSON.parse(head.node.value as string);
         headInfoCache[objectField.name] = info;
       }
       if (info.type == 'date-time')
         objectField.value = Date.parse(objectField.value);
-      const positions = this.indexObjectField(
+      const positions = await this.indexObjectField(
         objectField, head!, position, cache
       );
       for (const position of positions)
@@ -152,7 +152,7 @@ class Index {
       await this.store.close();
   }
 
-  protected indexObjectField(
+  protected async indexObjectField(
     objectField: ObjectField, head: IndexEntry, entryPosition: number,
     cache?: IndexCache,
   ) {
@@ -177,7 +177,7 @@ class Index {
     for (let i = height - 1; i >= 0; i--) {
       let nextNodePos: number;
       while (nextNodePos = current.node.next(i)) {
-        const next = this.getEntry(nextNodePos, cache);
+        const next = await this.getEntry(nextNodePos, cache);
         if (next.node.value! <= value)
           current = next;
         if (next.node.value! >= value)
@@ -225,12 +225,12 @@ class Index {
     if (!alreadyOpen)
       await this.store.open();
 
-    let head = this.getRootEntry();
+    let head = await this.getRootEntry();
 
     const fields: IndexField[] = [];
 
     while (head.link) {
-      head = this.getEntry(head.link);
+      head = await this.getEntry(head.link);
       const info = JSON.parse(head.node.value as string);
       fields.push({
         name: head.field,
@@ -252,10 +252,10 @@ class Index {
     if (!alreadyOpen)
       await this.store.open();
 
-    let head = this.getRootEntry();
+    let head = await this.getRootEntry();
 
     while (head.link) {
-      head = this.getEntry(head.link);
+      head = await this.getEntry(head.link);
       fields = fields.filter(f => f.name != head.field);
     }
 
@@ -277,11 +277,11 @@ class Index {
       await this.store.close();
   }
 
-  protected getHead(field: string, cache?: IndexCache) {
-    let head = this.getRootEntry(cache);
+  protected async getHead(field: string, cache?: IndexCache) {
+    let head = await this.getRootEntry(cache);
 
     while (head.field != field && head.link)
-      head = this.getEntry(head.link, cache);
+      head = await this.getEntry(head.link, cache);
 
     if (head.field != field)
       throw new Error(`Field "${field}" missing from index`);
@@ -289,11 +289,11 @@ class Index {
     return head;
   }
 
-  protected getRootEntry(cache?: IndexCache) {
+  protected async getRootEntry(cache?: IndexCache) {
     const cached = cache && cache.get(0);
     if (cached)
       return cached;
-    const { start, value } = this.store.getSync(1);
+    const { start, value } = await this.store.get(1);
     const entry = new IndexEntry(value);
     entry.position = start;
     if (cache)
@@ -321,11 +321,11 @@ class Index {
     return start + length;
   }
 
-  protected getEntry(position: number, cache?: IndexCache) {
+  protected async getEntry(position: number, cache?: IndexCache) {
     const cached = cache && cache.get(position);
     if (cached)
       return cached;
-    const { start, value } = this.store.getSync(position);
+    const { start, value } = await this.store.get(position);
     const entry = new IndexEntry(value);
     entry.position = start;
     if (cache)
@@ -347,7 +347,7 @@ class Index {
 
     const cache: IndexCache = new Map();
 
-    const head = this.getHead(field, cache);
+    const head = await this.getHead(field, cache);
     const height = head.node.levels.filter(p => p != 0).length;
 
     if (JSON.parse(head.node.value as string).type == 'date-time')
@@ -359,7 +359,7 @@ class Index {
     for (let i = height - 1; i >= 0; i--) {
       let nextNodePos: number;
       while (nextNodePos = current.node.next(i)) {
-        const next = this.getEntry(nextNodePos, cache);
+        const next = await this.getEntry(nextNodePos, cache);
         const { seek } = predicate(next.node.value);
         if (seek <= 0)
           current = next;
@@ -374,14 +374,14 @@ class Index {
 
     if (current == head)
       current = current.node.next(0) ?
-        this.getEntry(current.node.next(0), cache) : null;
+        await this.getEntry(current.node.next(0), cache) : null;
 
     const entries: IndexEntry[] = [];
 
     while (current) {
       let entry = current;
       current = current.node.next(0) ?
-        this.getEntry(current.node.next(0), cache) : null;
+        await this.getEntry(current.node.next(0), cache) : null;
       const { seek, match } = predicate(entry.node.value);
       if (seek <= 0 && !match)
         continue;
@@ -389,7 +389,7 @@ class Index {
         break;
       entries.push(entry);
       while (entry.link) {
-        const link = this.getEntry(entry.link, cache);
+        const link = await this.getEntry(entry.link, cache);
         entries.push(link);
         entry = link;
       }

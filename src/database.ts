@@ -176,7 +176,7 @@ class Database<T extends Record = Record> {
     if (!alreadyOpen)
       await this.store.open();
     const objectFields: ObjectField[] = [];
-    for (const [pos, object] of this.store.getAllSync()) {
+    for await (const [pos, object] of this.store.getAll()) {
       objectFields.push(
         ...this.getObjectFields(object, pos, indexFields)
       );
