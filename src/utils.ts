@@ -2,90 +2,134 @@ import * as fs from 'fs';
 
 import * as z85 from 'z85';
 
-export function readJSON(
-  stream: IterableIterator<[number, string]>, parse = true
-) {
-  const chars: string[] = [];
+const enum JSONType {
+  Unknown, Array, Object, String
+}
 
-  let type: string | undefined;
+const enum Char {
+  Space = 32,
+  Quote = 34,
+  Comma = 44,
+  Newline = 10,
+  Backslash = 92,
+  LeftBrace = 123,
+  RightBrace = 125,
+  LeftBracket = 91,
+  RightBracket = 93
+}
+
+export function readJSON(
+  stream: IterableIterator<[number, number][]>, pos = 0, parse = true
+) {
+  const charCodes: number[] = [];
+
+  let type = JSONType.Unknown;
   let start = -1;
   let length = 0;
   let depth = 0;
   let inString = false;
   let escaping = false;
+  let done = false;
 
-  for (const [i, char] of stream) {
-    if (start == -1) {
-      if (char == ' ' || char == '\n')
+  let index = 0;
+
+  let res: IteratorResult<[number, number][]>;
+  while (!(res = stream.next()).done) {
+    if (pos >= res.value.length) {
+      pos -= res.value.length;
+      continue;
+    }
+
+    index = pos;
+    pos = 0;
+
+    for (; index < res.value.length; index++) {
+      const [i, charCode] = res.value[index];
+      if (start == -1) {
+        if (charCode == Char.Space || charCode == Char.Newline)
+          continue;
+        else {
+          start = i;
+          if (charCode == Char.LeftBrace)
+            type = JSONType.Object;
+          else if (charCode == Char.Quote)
+            type = JSONType.String;
+          else if (charCode == Char.LeftBracket)
+            type = JSONType.Array;
+        }
+      }
+
+      ++length;
+      if (parse)
+        charCodes.push(charCode);
+
+      const isStringQuote = charCode == Char.Quote && !escaping;
+      if (escaping)
+        escaping = false;
+      else if (charCode == Char.Backslash)
+        escaping = true;
+
+      if (isStringQuote)
+        inString = !inString;
+
+      if (inString && type != JSONType.String)
         continue;
-      else {
-        start = i;
-        if (char == '{')
-          type = 'object';
-        else if (char == '"')
-          type = 'string';
-        else if (char == '[')
-          type = 'array';
+
+      switch (type) {
+        case JSONType.Array:
+          if (charCode == Char.LeftBracket)
+            ++depth;
+          else if (charCode == Char.RightBracket)
+            --depth;
+          break;
+        case JSONType.Object:
+          if (charCode == Char.LeftBrace)
+            ++depth;
+          else if (charCode == Char.RightBrace)
+            --depth;
+          break;
+        case JSONType.String:
+          if (isStringQuote)
+            depth = Number(!depth);
+          break;
+        default:
+          if (
+            charCode == Char.Space || charCode == Char.Newline ||
+            charCode == Char.Comma || charCode == Char.RightBrace ||
+            charCode == Char.RightBracket
+          ) {
+            --depth;
+            // We only know if a primitive ended on the next character
+            // so undo it
+            --index;
+            --length;
+            if (parse)
+              charCodes.pop();
+          } else if (!depth)
+            ++depth;
+      }
+
+      if (!depth) {
+        done = true;
+        break;
       }
     }
-
-    ++length;
-    if (parse)
-      chars.push(char);
-
-    const isStringQuote = char == '"' && !escaping;
-    if (escaping)
-      escaping = false;
-    else if (char == '\\')
-      escaping = true;
-
-    if (isStringQuote)
-      inString = !inString;
-
-    if (inString && type != 'string')
-      continue;
-
-    switch (type) {
-      case 'array':
-        if (char == '[')
-          ++depth;
-        else if (char == ']')
-          --depth;
-        break;
-      case 'object':
-        if (char == '{')
-          ++depth;
-        else if (char == '}')
-          --depth;
-        break;
-      case 'string':
-        if (isStringQuote)
-          depth = Number(!depth);
-        break;
-      default:
-        if (
-          char == ' ' || char == '\n' || char == ',' ||
-          char == '}' || char == ']'
-        ) {
-          --depth;
-          // We only know if a primitive ended on the next character so undo it
-          --length;
-          if (parse)
-            chars.pop();
-        } else if (!depth)
-          ++depth;
-    }
-
-    if (!depth)
+    if (done)
       break;
   }
 
   if (start == -1)
     throw new Error('No JSON object found');
 
-  return parse ?
-    { value: JSON.parse(chars.join('')), start, length } :
-    { start, length };
+  const result: {
+    start: number, length: number, index: number, chars: [number, number][],
+    value?: any
+  } = { start, length, index, chars: res.value };
+
+  if (parse)
+    result.value = JSON.parse(String.fromCharCode.apply(null, charCodes));
+
+  return result;
 }
 
 export function findJSONfield(text: string, field: string) {
@@ -133,6 +177,36 @@ export function findJSONfield(text: string, field: string) {
   return;
 }
 
+function utf8charcode(buf: Buffer, i: number) {
+  const c = buf[i];
+  switch (c >> 4) {
+    case 0: case 1: case 2: case 3: case 4: case 5: case 6: case 7:
+      // 0xxxxxxx
+      return c;
+    case 12: case 13:
+      // 110xxxxx 10xxxxxx
+      return ((c & 0x1F) << 6) | (buf[i + 1] & 0x3F);
+    case 14:
+      // 1110xxxx 10xxxxxx 10xxxxxx
+      return (
+        ((c & 0x0F) << 12) |
+        ((buf[i + 1] & 0x3F) << 6) |
+        (buf[i + 2] & 0x3F)
+      );
+    case 15:
+      if (!(c & 0x8))
+        // 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
+        return (
+          ((c & 0x07) << 18) |
+          ((buf[i + 1] & 0x3F) << 12) |
+          ((buf[i + 2] & 0x3F) << 6) |
+          (buf[i + 3] & 0x3F)
+        );
+    default:
+      throw new Error('Invalid UTF-8');
+  }
+}
+
 export function* readSync(
   fd: number, position = 0, reverse = false, buffer?: Buffer
 ) {
@@ -140,51 +214,75 @@ export function* readSync(
   if (position < 0)
     position += fs.fstatSync(fd).size;
 
-  buffer = buffer || Buffer.alloc(1 << 16);
+  buffer = buffer || Buffer.alloc(1 << 12);
   const size = buffer.length;
 
   let pos = reverse ? position - size + 1 : position;
 
+  const chars: [number, number][] = Array(size);
+  for (let i = 0; i < size; i++)
+    chars[i] = Array(2) as [number, number];
+
+  let bytesRead = 0;
+  let charCount = 0;
+
+  let continuing = null;
+
   while (true) {
-    const length = Math.min(size, size + pos);
+    if (!continuing) {
+      charCount = 0;
+      const length = Math.min(size, size + pos);
 
-    pos = Math.max(pos, 0);
+      pos = Math.max(pos, 0);
 
-    const bytesRead = fs.readSync(fd, buffer, 0, length, pos);
+      bytesRead = fs.readSync(fd, buffer, 0, length, pos);
 
-    for (let i = 0; i < bytesRead;) {
-      let index = reverse ? (bytesRead - i - 1) : i;
+      for (let i = 0; i < bytesRead;) {
+        let index = reverse ? (bytesRead - i - 1) : i;
 
-      let count = 0;
-      if (reverse) {
-        count = 1;
-        while ((buffer[index] & 0xc0) == 0x80)
-          --index, ++count;
-      } else {
-        for (let b = 7; (buffer[index] >> b) & 1; b--)
-          ++count;
-        count = count || 1;
-      }
+        let count = 0;
+        if (reverse) {
+          count = 1;
+          while ((buffer[index] & 0xc0) == 0x80)
+            --index, ++count;
+        } else {
+          for (let b = 7; (buffer[index] >> b) & 1; b--)
+            ++count;
+          count = count || 1;
+        }
 
-      if (index < 0 || index + count > buffer.length)
-        throw new Error('Cannot handle this');
+        if (index < 0 || index + count > buffer.length)
+          throw new Error('Cannot handle this');
 
-      try {
-        yield [
-          pos + index,
-          buffer.toString('utf-8', index, index + count)
-        ] as [number, string];
+        chars[charCount][0] = pos + index;
+        chars[charCount][1] = utf8charcode(buffer, index);
+        ++charCount;
+
         i += count;
-      } finally {
-        // Prevent generator from being marked as done prematurely
-        continue;
       }
     }
 
-    if (bytesRead < size || (reverse && !pos))
-      break;
+    continuing = null;
 
-    pos += reverse ? -size : size;
+    try {
+      if (charCount == size)
+        yield chars;
+      else
+        yield chars.slice(0, charCount);
+      // If we reached here, it means we yielded successfully and can update
+      // the state for the next iteration.
+      continuing = false;
+      if (bytesRead < size || (reverse && !pos))
+        break;
+      pos += reverse ? -size : size;
+    } finally {
+      if (continuing == null) {
+        // If we reached here, then we didn't yield because the generator ended
+        // prematurely, so remember to yield in the next iteration.
+        continuing = true;
+        continue;
+      }
+    }
   }
 }
 

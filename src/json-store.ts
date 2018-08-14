@@ -52,16 +52,39 @@ class JSONStore<T extends object = object> implements Store<T> {
 
     const stream = this.file.readSync(0);
 
-    function* start(i: number, char: string) {
-      yield [i, char] as [number, string];
-      yield* stream;
+    function* chain<T>(a: T, b: IterableIterator<T>) {
+      yield a;
+      yield* b;
     }
 
     try {
-      for (const [i, char] of stream) {
-        if (char != '{')
+      let chars: [number, number][] = [];
+      let last = -1;
+
+      while (true) {
+        if (last >= chars.length - 1) {
+          const res = stream.next();
+          if (res.done)
+            break;
+          chars = res.value;
+          last = -1;
+        }
+
+        for (++last; last < chars.length; last++) {
+          const [, charCode] = chars[last];
+          if (charCode == 123) // left brace
+            break;
+        }
+
+        if (last == chars.length)
           continue;
-        yield [i, readJSON(start(i, char)).value];
+
+        const result = readJSON(chain(chars, stream), last);
+
+        yield [result.start, result.value];
+
+        chars = result.chars;
+        last = result.index;
       }
     } finally {
       if (!alreadyOpen)
@@ -75,100 +98,20 @@ class JSONStore<T extends object = object> implements Store<T> {
     return { value: value as T, start, length };
   }
 
-  async remove(position: number) {
-    const { start, length } = readJSON(this.file.readSync(position), false);
-    let last = false;
-    for (const [, char] of this.file.readSync(start + length)) {
-      if (char == ' ' || char == '\n')
-        continue;
-      else {
-        if (char == ']')
-          last = true;
-        break;
-      }
-    }
-    await this.file.clear(start, length + Number(!last));
-  }
-
-  async insert(data: T, position?: number) {
-    const alreadyOpen = this.file.isOpen;
-
-    const dataString = this.stringify(data);
-
-    try {
-      if (!alreadyOpen)
-        await this.file.open();
-    } catch (e) {
-      if (e.code != 'ENOENT')
-        throw e;
-      await this.file.write(
-        0, `[\n${' '.repeat(this.indent)}${dataString}\n]\n`
-      );
-      return {
-        start: 2 + this.indent,
-        length: dataString.length,
-        raw: dataString
-      };
-    }
-
-    if (position != null) {
-      let start = position;
-      if (position > 0) {
-        for (const [i, char] of this.file.readSync(position - 1, true)) {
-          if (char == ' ' || char == '\n')
-            start = i;
-          else
-            break;
-        }
-      }
-      start += this.indent + 1;
-
-      let end = position;
-      let last = false;
-      for (const [i, char] of this.file.readSync(position)) {
-        if (char == ' ' || char == '\n')
-          end = i;
-        else {
-          if (char == ']')
-            last = true;
-          break;
-        }
-      }
-      end -= last ? 1 : this.indent + 1;
-
-      const length = end - start + 1;
-
-      if (dataString.length > length)
-        throw new Error('Not enough space to insert');
-
-      await this.file.write(
-        start, `${dataString}${last ? '' : ','}`
-      );
-
-      if (!alreadyOpen)
-        await this.file.close();
-
-      return { start, length: dataString.length, raw: dataString };
-    } else {
-      const result = await this.appendRaw(dataString, position);
-      if (!alreadyOpen)
-        await this.file.close();
-      return result;
-    }
-  }
-
   async getAppendPosition() {
     let first = false;
     let position = 0;
-    for (const [i, char] of this.file.readSync(-1, true)) {
-      if (char == ' ' || char == '\n')
-        continue;
-      if (!position)
-        position = i - 1;
-      else {
-        if (char == '[')
-          first = true;
-        break;
+    for (const chars of this.file.readSync(-1, true)) {
+      for (const [i, charCode] of chars) {
+        if (charCode == 32 || charCode == 10) // space or newline
+          continue;
+        if (!position)
+          position = i - 1;
+        else {
+          if (charCode == 91) // left bracket
+            first = true;
+          break;
+        }
       }
     }
     return { position, first };
@@ -207,38 +150,6 @@ class JSONStore<T extends object = object> implements Store<T> {
     await this.file.write(position, valueString);
     if (!alreadyOpen)
       await this.file.close();
-  }
-
-  async getObjectStart(position: number) {
-    let depth = 1;
-    let prevChar: string | undefined;
-    let inString = false;
-    let pos: number | undefined;
-
-    for (const [i, char] of this.file.readSync(position, true)) {
-      // Ignore space
-      if (char == ' ' || char == '\n')
-        continue;
-      // Ignore strings
-      const isStringQuote = char == '"' && prevChar != '\\';
-      prevChar = char;
-      if (isStringQuote)
-        inString = !inString;
-      if (inString)
-        continue;
-
-      if (char == '}')
-        ++depth;
-      else if (char == '{')
-        --depth;
-
-      if (char == '{' && !depth) {
-        pos = i;
-        break;
-      }
-    }
-
-    return pos;
   }
 
   async lastModified() {
