@@ -3,9 +3,13 @@
   "version": "0.0.1",
   "description": "An indexed JSON file database",
   "main": "lib/main.js",
+  "files": [
+    "lib"
+  ],
   "scripts": {
     "build": "tsc",
     "lint": "tslint -p .",
+    "profile": "cd test && rollup -c | node --prof --no-logfile-per-isolate && node --prof-process v8.log > data/processed.txt && rm v8.log",
     "test": "ts-node --files test"
   },
   "repository": {
@@ -23,10 +27,12 @@
   },
   "homepage": "https://github.com/mohd-akram/jify#readme",
   "devDependencies": {
-    "@types/node": "^10.5.8",
+    "@types/node": "^10.9.4",
+    "rollup": "^0.65.0",
+    "rollup-plugin-typescript3": "^1.1.0",
     "ts-node": "^7.0.1",
     "tslint": "^5.11.0",
-    "typescript": "^3.0.1"
+    "typescript": "^3.0.3"
   },
   "dependencies": {
     "z85": "^0.0.2"
