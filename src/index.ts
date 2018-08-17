@@ -71,7 +71,8 @@ class Index {
         objectField, head!, position, cache
       );
       for (const position of positions)
-        updates.add(position);
+        if (position > 0)
+          updates.add(position);
       --position;
     }
 
@@ -115,7 +116,6 @@ class Index {
         }
 
         if (!pending) {
-          updates.delete(entry.position);
           if (insertPosition) {
             const raw = this.store.stringify(entry.serialized());
             const start = insertPosition + offset;
