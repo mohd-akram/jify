@@ -1,5 +1,8 @@
+import { EventEmitter } from 'events';
 import * as fs from 'fs';
 import { promisify } from 'util';
+
+import { lock, unlock } from 'os-lock';
 
 import { read } from './utils';
 
@@ -7,10 +10,14 @@ const fsOpen = promisify(fs.open);
 const fsClose = promisify(fs.close);
 const fsWrite = promisify(fs.write);
 
-class File {
+class File extends EventEmitter {
   protected fd: number | null = null;
+  protected lockedPositions =
+    new Map<number, { exclusive: boolean, count: number }>();
 
-  constructor(protected filename: string, protected buffer?: Buffer) { }
+  constructor(protected filename: string) {
+    super();
+  }
 
   get isOpen() {
     return this.fd != null;
@@ -19,7 +26,7 @@ class File {
   read(position: number, reverse = false) {
     if (!this.fd)
       throw new Error('Need to call open() before read()');
-    return read(this.fd, position, reverse, this.buffer);
+    return read(this.fd, position, reverse);
   }
 
   async write(position: number, text: string) {
@@ -91,6 +98,38 @@ class File {
     fs.closeSync(this.fd);
   }
 
+  async lock(pos = 0, options = { exclusive: false }) {
+    const lockedPosition = this.lockedPositions.get(pos) ||
+      { count: 0, exclusive: false };
+
+    const canGetLock = options.exclusive ?
+      !lockedPosition.count : !lockedPosition.exclusive;
+
+    if (canGetLock) {
+      ++lockedPosition.count;
+      lockedPosition.exclusive = options.exclusive;
+      this.lockedPositions.set(pos, lockedPosition);
+      await lock(this.fd!, pos, 1, options);
+      return;
+    } else {
+      return new Promise(resolve => {
+        this.once('unlock', () => {
+          this.lock(pos, options).then(() => resolve());
+        });
+      });
+    }
+  }
+
+  async unlock(pos = 0) {
+    await unlock(this.fd!, pos, 1);
+    const lockedPosition = this.lockedPositions.get(pos)!;
+    lockedPosition.exclusive = false;
+    --lockedPosition.count;
+    if (!lockedPosition.count) {
+      this.lockedPositions.delete(pos);
+      this.emit('unlock', pos);
+    }
+  }
 }
 
 export default File;

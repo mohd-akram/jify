@@ -33,6 +33,38 @@ class Index {
     return entries.map(entry => entry.pointer);
   }
 
+  async beginTransaction(field: string) {
+    const alreadyOpen = this.store.isOpen;
+    if (!alreadyOpen)
+      await this.store.open();
+    const head = await this.lockHead(field, true);
+    const value = JSON.parse(head.node.value as string);
+    if (value.tx)
+      throw new IndexError(`Field "${field}" already in transaction`);
+    value.tx = 1;
+    head.node.value = JSON.stringify(value);
+    await this.updateEntry(head);
+    await this.unlockHead(head);
+    if (!alreadyOpen)
+      await this.store.close();
+  }
+
+  async endTransaction(field: string) {
+    const alreadyOpen = this.store.isOpen;
+    if (!alreadyOpen)
+      await this.store.open();
+    const head = await this.lockHead(field, true);
+    const value = JSON.parse(head.node.value as string);
+    if (!value.tx)
+      throw new IndexError(`Field "${field}" not in transaction`);
+    value.tx = 0;
+    head.node.value = JSON.stringify(value);
+    await this.updateEntry(head);
+    await this.unlockHead(head);
+    if (!alreadyOpen)
+      await this.store.close();
+  }
+
   async insert(objectFields: ObjectField | ObjectField[]) {
     if (!Array.isArray(objectFields))
       objectFields = [objectFields];
@@ -50,6 +82,7 @@ class Index {
 
     const updates = new Set<number>();
 
+    const heads = [];
     let position = -1;
     for (const objectField of objectFields) {
       const cachedHeadPos = headPosCache[objectField.name];
@@ -60,7 +93,11 @@ class Index {
         head = cache.get(cachedHeadPos)!;
         info = cachedHeadInfo;
       } else {
-        head = await this.getHead(objectField.name, cache);
+        // Lock reads/writes on this field until we're done
+        head = await this.lockHead(
+          objectField.name, true, cache
+        );
+        heads.push(head);
         headPosCache[objectField.name] = head.position;
         info = JSON.parse(head.node.value as string);
         headInfoCache[objectField.name] = info;
@@ -75,6 +112,10 @@ class Index {
           updates.add(position);
       --position;
     }
+
+    // Lock writes completely until we're done to ensure the append position
+    // remains correct
+    await this.store.lock(0, { exclusive: true });
 
     const { position: startPosition } = await this.store.getAppendPosition();
     let insertPosition = startPosition;
@@ -147,6 +188,10 @@ class Index {
         entry.link = cache.get(entry.link)!.position;
       await this.updateEntry(entry);
     }
+
+    for (const head of heads)
+      await this.unlockHead(head);
+    await this.store.unlock();
 
     if (!alreadyOpen)
       await this.store.close();
@@ -264,11 +309,13 @@ class Index {
     let position: number | undefined;
     for (const field of fields) {
       const prevHead = head;
-      const info = JSON.stringify(
-        field.type == 'date-time' ? { type: field.type } : {}
-      );
+      const info: IndexFieldInfo = { tx: 0 };
+      if (field.type == 'date-time')
+        info.type = field.type;
       head = new IndexEntry(
-        field.name, 0, new SkipListNode(Array(this.maxHeight).fill(0), info)
+        field.name, 0, new SkipListNode(
+          Array(this.maxHeight).fill(0), JSON.stringify(info)
+        )
       );
       position = await this.insertEntry(head, undefined, position);
       prevHead.link = head.position;
@@ -279,16 +326,29 @@ class Index {
       await this.store.close();
   }
 
-  protected async getHead(field: string, cache?: IndexCache) {
+  protected async lockHead(
+    field: string, exclusive = false, cache?: IndexCache
+  ) {
     let head = await this.getRootEntry(cache);
 
-    while (head.field != field && head.link)
+    while (head.field != field && head.link) {
       head = await this.getEntry(head.link, cache);
+      if (head.field == field) {
+        // Lock and get the entry again since it might have changed
+        // just before locking
+        await this.store.lock(head.position, { exclusive });
+        head = await this.getEntry(head.position, cache);
+      }
+    }
 
     if (head.field != field)
-      throw new Error(`Field "${field}" missing from index`);
+      throw new IndexError(`Field "${field}" missing from index`);
 
     return head;
+  }
+
+  protected async unlockHead(head: IndexEntry) {
+    await this.store.unlock(head.position);
   }
 
   protected async getRootEntry(cache?: IndexCache) {
@@ -349,10 +409,15 @@ class Index {
 
     const cache: IndexCache = new Map();
 
-    const head = await this.getHead(field, cache);
+    const head = await this.lockHead(field, false, cache);
     const height = head.node.levels.filter(p => p != 0).length;
 
-    if (JSON.parse(head.node.value as string).type == 'date-time')
+    const info: IndexFieldInfo = JSON.parse(head.node.value as string);
+
+    if (info.tx)
+      throw new IndexError(`Field "${field}" in transaction`);
+
+    if (info.type == 'date-time')
       predicate.key = Date.parse as (s: SkipListValue) => number;
 
     let found = false;
@@ -397,12 +462,17 @@ class Index {
       }
     }
 
+    await this.unlockHead(head);
+
     if (!alreadyOpen)
       await this.store.close();
 
     return entries;
   }
 }
+
+export class IndexError extends Error { }
+IndexError.prototype.name = 'IndexError';
 
 export enum SkipListValueType {
   Null,
@@ -430,9 +500,9 @@ export class SkipListNode {
     if (Array.isArray(obj)) {
       const levels: number[] = obj;
       if (!levels)
-        throw new Error('levels is required');
+        throw new TypeError('levels is required');
       if (typeof value == 'number' && !Number.isFinite(value))
-        throw new Error('Number value must be finite');
+        throw new TypeError('Number value must be finite');
       this.value = value == null ? null : value;
       this.levels = levels;
     } else {
@@ -495,7 +565,7 @@ export class IndexEntry {
     if (typeof obj == 'string') {
       const field = obj;
       if (pointer == null || !node)
-        throw new Error('pointer and node are required');
+        throw new TypeError('pointer and node are required');
       this.field = field;
       this.pointer = pointer;
       this.node = node;
@@ -537,6 +607,7 @@ export interface ObjectField {
 
 interface IndexFieldInfo {
   type?: string;
+  tx?: number;
 }
 
 export interface IndexField extends IndexFieldInfo {

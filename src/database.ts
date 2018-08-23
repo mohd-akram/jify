@@ -93,10 +93,13 @@ class Database<T extends Record = Record> {
       if (e.code != 'ENOENT')
         throw e;
     }
+    for (const { name } of indexFields)
+      await this._index.beginTransaction(name);
 
     const alreadyOpen = this.store.isOpen;
     if (!alreadyOpen)
       await this.store.open();
+    await this.store.lock(0, { exclusive: true });
 
     const objectFields: ObjectField[] = [];
 
@@ -126,10 +129,13 @@ class Database<T extends Record = Record> {
         pendingRaw.join(this.store.joiner), startPosition, first
       );
 
-    await this._index.insert(objectFields);
-
+    await this.store.unlock();
     if (!alreadyOpen)
       await this.store.close();
+
+    await this._index.insert(objectFields);
+    for (const { name } of indexFields)
+      await this._index.endTransaction(name);
   }
 
   async index(...fields: (string | IndexField)[]) {
@@ -146,12 +152,19 @@ class Database<T extends Record = Record> {
 
     let currentIndexFields = new Map<string, IndexField>();
 
-    if (indexExists)
+    if (indexExists) {
       currentIndexFields = new Map(
         (await this._index.getFields()).map(
           f => [f.name, f] as [string, IndexField]
         )
       );
+      for (const field of currentIndexFields.values()) {
+        if (field.tx) {
+          indexOutdated = true;
+          break;
+        }
+      }
+    }
     if (indexOutdated) {
       await this._index.drop();
       indexExists = false;
@@ -172,6 +185,10 @@ class Database<T extends Record = Record> {
     if (!indexFields.length)
       return;
 
+    await this._index.addFields(indexFields);
+    for (const { name } of indexFields)
+      await this._index.beginTransaction(name);
+
     const alreadyOpen = this.store.isOpen;
     if (!alreadyOpen)
       await this.store.open();
@@ -184,8 +201,9 @@ class Database<T extends Record = Record> {
     if (!alreadyOpen)
       await this.store.close();
 
-    await this._index.addFields(indexFields);
     await this._index.insert(objectFields);
+    for (const { name } of indexFields)
+      await this._index.endTransaction(name);
   }
 
   async drop() {

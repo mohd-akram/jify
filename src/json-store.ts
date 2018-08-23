@@ -6,7 +6,7 @@ class JSONStore<T extends object = object> implements Store<T> {
   protected file: File;
 
   constructor(filename: string, protected indent = 2) {
-    this.file = new File(filename, Buffer.alloc(1 << 12));
+    this.file = new File(filename);
   }
 
   get isOpen() {
@@ -29,6 +29,14 @@ class JSONStore<T extends object = object> implements Store<T> {
 
   async destroy() {
     await this.file.delete();
+  }
+
+  async lock(pos = 0, options = { exclusive: false }) {
+    await this.file.lock(pos, options);
+  }
+
+  async unlock(pos = 0) {
+    await this.file.unlock(pos);
   }
 
   async get(position: number) {
