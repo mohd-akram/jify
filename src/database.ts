@@ -1,4 +1,5 @@
 import * as path from 'path';
+import * as child_process from 'child_process';
 
 import Index, { IndexField, ObjectField } from './index';
 import JSONStore from './json-store';
@@ -189,21 +190,40 @@ class Database<T extends Record = Record> {
     for (const { name } of indexFields)
       await this._index.beginTransaction(name);
 
+    const subprocess = child_process.fork(
+      `${__dirname}/indexer`,
+      [this._index.filename, ...(indexFields.map(i => i.name))]
+    );
+    await this.waitForReady(subprocess);
+
     const alreadyOpen = this.store.isOpen;
     if (!alreadyOpen)
       await this.store.open();
-    const objectFields: ObjectField[] = [];
-    for await (const [pos, object] of this.store.getAll()) {
-      objectFields.push(
-        ...this.getObjectFields(object, pos, indexFields)
-      );
-    }
+    for await (const [pos, object] of this.store.getAll())
+      subprocess.send(this.getObjectFields(object, pos, indexFields));
     if (!alreadyOpen)
       await this.store.close();
 
-    await this._index.insert(objectFields);
+    subprocess.send(null);
+    await this.waitForClose(subprocess);
+
     for (const { name } of indexFields)
       await this._index.endTransaction(name);
+  }
+
+  private async waitForReady(subprocess: child_process.ChildProcess) {
+    return new Promise(resolve => {
+      subprocess.once('message', message => {
+        if (message == 'ready')
+          resolve();
+      });
+    });
+  }
+
+  private async waitForClose(subprocess: child_process.ChildProcess) {
+    return new Promise(resolve => {
+      subprocess.once('close', () => resolve());
+    });
   }
 
   async drop() {

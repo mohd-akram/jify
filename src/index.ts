@@ -9,7 +9,7 @@ class Index {
   protected store: JSONStore<SerializedIndexEntry>;
   protected maxHeight = 32;
 
-  constructor(filename: string) {
+  constructor(public filename: string) {
     this.store = new JSONStore(filename, 0);
   }
 
@@ -17,6 +17,14 @@ class Index {
     await this.store.create();
     await this.store.open();
     await this.insertRootEntry();
+    await this.store.close();
+  }
+
+  async open() {
+    await this.store.open();
+  }
+
+  async close() {
     await this.store.close();
   }
 
@@ -65,7 +73,9 @@ class Index {
       await this.store.close();
   }
 
-  async insert(objectFields: ObjectField | ObjectField[]) {
+  async insert(
+    objectFields: ObjectField | ObjectField[], cache: IndexCache = new Map()
+  ) {
     if (!Array.isArray(objectFields))
       objectFields = [objectFields];
 
@@ -78,7 +88,6 @@ class Index {
 
     const headPosCache: { [field: string]: number } = {};
     const headInfoCache: { [field: string]: IndexFieldInfo } = {};
-    const cache: IndexCache = new Map();
 
     const updates = new Set<number>();
 
@@ -199,11 +208,9 @@ class Index {
 
   protected async indexObjectField(
     objectField: ObjectField, head: IndexEntry, entryPosition: number,
-    cache?: IndexCache,
+    cache: IndexCache = new Map(),
   ) {
     const { name, value, position } = objectField;
-
-    cache = cache || new Map();
 
     let height = head.node.levels.filter(p => p != 0).length;
 
