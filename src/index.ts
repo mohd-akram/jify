@@ -76,13 +76,13 @@ class Index {
       --position;
     }
 
-    let startPosition: number | undefined;
-    let insertPosition: number | undefined;
+    const { position: startPosition } = await this.store.getAppendPosition();
+    let insertPosition = startPosition;
     const pendingRaw: string[] = [];
 
     const offset = this.store.joiner.length;
 
-    const insert = async (entry: IndexEntry) => {
+    const insert = (entry: IndexEntry) => {
       const stack = [entry];
       while (stack.length) {
         const entry = stack.pop()!;
@@ -116,26 +116,20 @@ class Index {
         }
 
         if (!pending) {
-          if (insertPosition) {
-            const raw = this.store.stringify(entry.serialized());
-            const start = insertPosition + offset;
-            const length = raw.length;
-            insertPosition = start + length;
-            entry.position = start;
-            if (cache)
-              cache.set(entry.position, entry);
-            pendingRaw.push(raw);
-          } else {
-            insertPosition = await this.insertEntry(entry, cache);
-          }
-          if (!startPosition)
-            startPosition = insertPosition;
+          const raw = this.store.stringify(entry.serialized());
+          const start = insertPosition + offset;
+          const length = raw.length;
+          insertPosition = start + length;
+          entry.position = start;
+          if (cache)
+            cache.set(entry.position, entry);
+          pendingRaw.push(raw);
         }
       }
     };
 
     for (let i = -1; i > position; i--)
-      await insert(cache.get(i)!);
+      insert(cache.get(i)!);
 
     if (pendingRaw.length)
       await this.store.appendRaw(

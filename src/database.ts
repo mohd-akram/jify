@@ -100,27 +100,21 @@ class Database<T extends Record = Record> {
 
     const objectFields: ObjectField[] = [];
 
-    let startPosition: number | undefined;
-    let position: number | undefined;
+    const { position: startPosition, first } =
+      await this.store.getAppendPosition();
+    let insertPosition = startPosition - Number(first);
     let pendingRaw: string[] = [];
 
     const offset = this.store.joiner.length;
 
     for (const object of objects) {
-      let start: number;
-      let length: number;
-      if (!position) {
-        ({ start, length } = await this.store.append(object));
-      } else {
-        const raw = this.store.stringify(object);
-        start = position + offset;
-        length = raw.length;
-        pendingRaw.push(raw);
-      }
+      const start = insertPosition + offset;
 
-      position = start + length;
-      if (!startPosition)
-        startPosition = position;
+      const raw = this.store.stringify(object);
+      const length = raw.length;
+      pendingRaw.push(raw);
+
+      insertPosition = start + length;
 
       objectFields.push(
         ...this.getObjectFields(object, start, indexFields)
@@ -129,7 +123,7 @@ class Database<T extends Record = Record> {
 
     if (pendingRaw.length)
       await this.store.appendRaw(
-        pendingRaw.join(this.store.joiner), startPosition
+        pendingRaw.join(this.store.joiner), startPosition, first
       );
 
     await this._index.insert(objectFields);

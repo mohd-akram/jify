@@ -157,32 +157,36 @@ class JSONStore<T extends object = object> implements Store<T> {
     }
   }
 
+  async getAppendPosition() {
+    let first = false;
+    let position = 0;
+    for (const [i, char] of this.file.readSync(-1, true)) {
+      if (char == ' ' || char == '\n')
+        continue;
+      if (!position)
+        position = i - 1;
+      else {
+        if (char == '[')
+          first = true;
+        break;
+      }
+    }
+    return { position, first };
+  }
+
   async append(data: T, position?: number) {
     const dataString = this.stringify(data);
     return await this.appendRaw(dataString, position);
   }
 
-  async appendRaw(dataString: string, position?: number) {
+  async appendRaw(dataString: string, position?: number, first = false) {
     if (!dataString)
       throw new Error('Cannot append empty string');
 
-    let isFirst = false;
+    if (!position)
+      ({ position, first } = await this.getAppendPosition());
 
-    if (!position) {
-      for (const [i, char] of this.file.readSync(-1, true)) {
-        if (char == ' ' || char == '\n')
-          continue;
-        if (!position)
-          position = i - 1;
-        else {
-          if (char == '[')
-            isFirst = true;
-          break;
-        }
-      }
-    }
-
-    const joiner = isFirst ? this.joiner.slice(1) : this.joiner;
+    const joiner = first ? this.joiner.slice(1) : this.joiner;
 
     await this.file.write(
       position!, `${joiner}${dataString}\n]\n`,
