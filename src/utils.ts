@@ -66,9 +66,13 @@ export function readJSON(
         if (
           char == ' ' || char == '\n' || char == ',' ||
           char == '}' || char == ']'
-        )
+        ) {
           --depth;
-        else if (!depth)
+          // We only know if a primitive ended on the next character so undo it
+          --length;
+          if (parse)
+            chars.pop();
+        } else if (!depth)
           ++depth;
     }
 
