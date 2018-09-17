@@ -86,40 +86,37 @@ class Index {
     if (!alreadyOpen)
       await this.store.open();
 
-    const headPosCache: { [field: string]: number } = {};
-    const headInfoCache: { [field: string]: IndexFieldInfo } = {};
+    const fieldName = objectFields[0].name;
+    const head = await this.lockHead(fieldName, true, cache);
+    const info: IndexFieldInfo = JSON.parse(head.node.value as string);
+    const isDateTime = info.type == 'date-time';
 
+    const transform = (o: ObjectField) => {
+      if (isDateTime && typeof o.value == 'string')
+        o.value = Date.parse(o.value);
+    };
+
+    if (objectFields.length == 1) {
+      transform(objectFields[0]);
+    } else {
+      // Sort in descending order to allow a single insert
+      objectFields.sort((b, a) => {
+        transform(a);
+        transform(b);
+        return a.value < b.value ? -1 : a.value > b.value ? 1 : 0;
+      });
+    }
+
+    const inserts: IndexEntry[] = [];
     const updates = new Set<number>();
 
-    const heads = [];
-    let position = -1;
     for (const objectField of objectFields) {
-      const cachedHeadPos = headPosCache[objectField.name];
-      const cachedHeadInfo = headInfoCache[objectField.name];
-      let head: IndexEntry;
-      let info: IndexFieldInfo;
-      if (cachedHeadPos && cachedHeadInfo) {
-        head = cache.get(cachedHeadPos)!;
-        info = cachedHeadInfo;
-      } else {
-        // Lock reads/writes on this field until we're done
-        head = await this.lockHead(
-          objectField.name, true, cache
-        );
-        heads.push(head);
-        headPosCache[objectField.name] = head.position;
-        info = JSON.parse(head.node.value as string);
-        headInfoCache[objectField.name] = info;
-      }
-      if (info.type == 'date-time')
-        objectField.value = Date.parse(objectField.value);
       const positions = await this.indexObjectField(
-        objectField, head!, position, cache
+        objectField, head!, cache, inserts
       );
       for (const position of positions)
         if (position > 0)
           updates.add(position);
-      --position;
     }
 
     // Lock writes completely until we're done to ensure the append position
@@ -132,83 +129,80 @@ class Index {
 
     const offset = this.store.joiner.length;
 
-    const insert = (entry: IndexEntry) => {
-      const stack = [entry];
-      while (stack.length) {
-        const entry = stack.pop()!;
-        if (entry.position >= 0)
+    const process = (entry: IndexEntry) => {
+      const position = insertPosition + offset;
+      entry.position = position;
+      for (let i = 0; i < entry.node.levels.length; i++) {
+        const pos = entry.node.levels[i];
+        if (pos >= 0)
           continue;
-
-        let pending = false;
-        for (let i = 0; i < entry.node.levels.length; i++) {
-          const pos = entry.node.levels[i];
-          if (pos >= 0)
-            continue;
-          const next = cache.get(pos)!;
-          entry.node.levels[i] = next.position;
-          if (pos != next.position)
-            continue;
-          if (!pending)
-            stack.push(entry);
-          stack.push(next);
-          pending = true;
-        }
-
-        if (entry.link < 0) {
-          const next = cache.get(entry.link)!;
-          const link = next.position;
-          if (entry.link == link) {
-            stack.push(entry);
-            stack.push(next);
-            pending = true;
-          }
-          entry.link = link;
-        }
-
-        if (!pending) {
-          const raw = this.store.stringify(entry.serialized());
-          const start = insertPosition + offset;
-          const length = raw.length;
-          insertPosition = start + length;
-          entry.position = start;
-          if (cache)
-            cache.set(entry.position, entry);
-          pendingRaw.push(raw);
-        }
+        const next = inserts[-pos - 1];
+        entry.node.levels[i] = next.position;
       }
+      const raw = this.store.stringify(entry.serialized());
+      insertPosition = position + raw.length;
+      pendingRaw.push(raw);
     };
 
-    for (let i = -1; i > position; i--)
-      insert(cache.get(i)!);
+    for (let i = 0; i < inserts.length; i++) {
+      const entry = inserts[i];
+      // Insert all the duplicates first so that the main entry can link
+      // to the first duplicate
+      const value = entry.node.value;
+      let prev = null;
+      let dupe = null;
+      if (entry.node.isDuplicate) {
+        process(entry);
+        prev = entry;
+      }
+      while ((dupe = inserts[i + 1]) && dupe.node.value == value) {
+        if (prev)
+          dupe.link = prev.position;
+        process(dupe);
+        prev = dupe;
+        ++i;
+      }
+      if (!entry.node.isDuplicate) {
+        if (prev)
+          entry.link = prev.position;
+        process(entry);
+      }
+    }
 
     if (pendingRaw.length)
       await this.store.appendRaw(
         pendingRaw.join(this.store.joiner), startPosition
       );
 
+    await this.store.unlock();
+
+    // Update the cache after unlocking as it is slow
+    for (let i = 0; i < inserts.length; i++) {
+      const entry = inserts[i];
+      cache.set(entry.position, entry);
+    }
+
     for (const pos of updates) {
       const entry = cache.get(pos)!;
       for (let i = 0; i < entry.node.levels.length; i++) {
         const p = entry.node.levels[i];
         if (p < 0)
-          entry.node.levels[i] = cache.get(p)!.position;
+          entry.node.levels[i] = inserts[-p - 1].position;
       }
       if (entry.link < 0)
-        entry.link = cache.get(entry.link)!.position;
+        entry.link = inserts[-entry.link - 1].position;
       await this.updateEntry(entry);
     }
 
-    for (const head of heads)
-      await this.unlockHead(head);
-    await this.store.unlock();
+    await this.unlockHead(head);
 
     if (!alreadyOpen)
       await this.store.close();
   }
 
   protected async indexObjectField(
-    objectField: ObjectField, head: IndexEntry, entryPosition: number,
-    cache: IndexCache = new Map(),
+    objectField: ObjectField, head: IndexEntry,
+    cache: IndexCache = new Map(), inserts: IndexEntry[]
   ) {
     const { name, value, position } = objectField;
 
@@ -230,8 +224,8 @@ class Index {
       let nextNodePos: number;
       while (nextNodePos = current.node.next(i)) {
         // Check cache ourselves to avoid promise overhead
-        const next = cache.get(nextNodePos) ||
-          await this.getEntry(nextNodePos, cache);
+        const next = nextNodePos < 0 ? inserts[-nextNodePos - 1] :
+          cache.get(nextNodePos) || await this.getEntry(nextNodePos, cache);
         if (next.node.value! <= value)
           current = next;
         if (next.node.value! >= value)
@@ -248,13 +242,13 @@ class Index {
     const isDuplicate = prev.node.value == value;
 
     const entry = isDuplicate ?
-      new IndexEntry(name, position, new SkipListNode([])) :
+      new IndexEntry(name, position, new SkipListNode([], value)) :
       new IndexEntry(name, position,
         new SkipListNode(Array(level + 1).fill(0), value)
       );
 
-    entry.position = entryPosition; // placeholder position
-    cache.set(entry.position, entry);
+    inserts.push(entry);
+    entry.position = -inserts.length; // placeholder position
 
     if (isDuplicate) {
       entry.link = prev.link;
@@ -523,11 +517,18 @@ export class SkipListNode {
     }
   }
 
+  get isDuplicate() {
+    return this.levels.length == 0;
+  }
+
   next(level: number) {
     return this.levels[level];
   }
 
   encoded() {
+    if (this.isDuplicate)
+      return ';;';
+
     const encodedLevels = this.levels.map(l => z85EncodeAsUInt32(l)).join(',');
 
     const encodedType = z85EncodeAsUInt32(this.type, true);

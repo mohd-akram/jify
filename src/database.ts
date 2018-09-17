@@ -102,7 +102,7 @@ class Database<T extends Record = Record> {
       await this.store.open();
     await this.store.lock(0, { exclusive: true });
 
-    const objectFields: ObjectField[] = [];
+    const objectFieldsMap: { [field: string]: ObjectField[] } = {};
 
     const { position: startPosition, first } =
       await this.store.getAppendPosition();
@@ -120,9 +120,13 @@ class Database<T extends Record = Record> {
 
       insertPosition = start + length;
 
-      objectFields.push(
-        ...this.getObjectFields(object, start, indexFields)
-      );
+      for (const o of this.getObjectFields(object, start, indexFields)) {
+        const objectFields = objectFieldsMap[o.name];
+        if (objectFields)
+          objectFields.push(o);
+        else
+          objectFieldsMap[o.name] = [o];
+      }
     }
 
     if (pendingRaw.length)
@@ -134,7 +138,14 @@ class Database<T extends Record = Record> {
     if (!alreadyOpen)
       await this.store.close();
 
-    await this._index.insert(objectFields);
+    if (indexFields.length) {
+      await this._index.open();
+      await Promise.all(Object.values(objectFieldsMap).map(
+        objectFields => this._index.insert(objectFields))
+      );
+      await this._index.close();
+    }
+
     for (const { name } of indexFields)
       await this._index.endTransaction(name);
   }
