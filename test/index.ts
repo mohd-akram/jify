@@ -27,7 +27,7 @@ function fillArray(n: number, value: (i: number) => any) {
 
 async function testInserts(
   db: Database, fields: (string | IndexField)[],
-  n = 1000, value: (i: number) => Record
+  n = 1000, size = 100_000, value: (i: number) => Record
 ) {
   try {
     await db.drop();
@@ -38,7 +38,7 @@ async function testInserts(
 
   await db.create(fields);
 
-  const size = Math.min(100_000, n);
+  size = Math.min(size, n);
   const objects = Array(size);
 
   console.time(`insert ${n} objects`);
@@ -70,6 +70,9 @@ async function testFind(
 
 async function main() {
   const n = Number(process.argv[2]) || 10_000;
+  const size = Number(process.argv[3]) || 100_000;
+  const count = Math.min(n, 20);
+
   const fields = [
     'id', 'person.age', { name: 'created', type: 'date-time' }
   ];
@@ -84,20 +87,22 @@ async function main() {
       new Date(+(new Date()) - Math.floor(Math.random() * 1e10)).toISOString()
     );
 
-  await testInserts(db, fields, n, i => ({
+  await testInserts(db, fields, n, size, i => ({
     id: ids[i], person: { age: ages[i] }, created: dates[i]
   }));
   await testFind(
-    db, 'id', 20, _ => ids[getRandomInt(0, n - 1)], val => idsCount[val]
+    db, 'id', count, _ => ids[getRandomInt(0, n - 1)], val => idsCount[val]
   );
   await testFind(
-    db, 'person.age', 20, _ => ages[getRandomInt(0, n - 1)],
+    db, 'person.age', count, _ => ages[getRandomInt(0, n - 1)],
     val => agesCount[val]
   );
   await testFind(
-    db, 'created', 20, _ => dates[getRandomInt(0, n - 1)],
+    db, 'created', count, _ => dates[getRandomInt(0, n - 1)],
     val => datesCount[val]
   );
 }
+
+process.on('unhandledRejection', err => { throw err; });
 
 main();

@@ -10,7 +10,7 @@
     "build": "tsc",
     "lint": "tslint -p .",
     "profile": "cd test && rollup -c | node --prof --no-logfile-per-isolate && node --prof-process v8.log > data/processed.txt && rm v8.log",
-    "test": "ts-node --files test"
+    "test": "ts-node --files test 1 && ts-node --files test 200 20 && ts-node --files test"
   },
   "repository": {
     "type": "git",
