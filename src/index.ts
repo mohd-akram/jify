@@ -177,7 +177,9 @@ class Index {
     for (let i = height - 1; i >= 0; i--) {
       let nextNodePos: number;
       while (nextNodePos = current.node.next(i)) {
-        const next = await this.getEntry(nextNodePos, cache);
+        // Check cache ourselves to avoid promise overhead
+        const next = cache.get(nextNodePos) ||
+          await this.getEntry(nextNodePos, cache);
         if (next.node.value! <= value)
           current = next;
         if (next.node.value! >= value)
