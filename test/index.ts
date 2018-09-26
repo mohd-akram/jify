@@ -91,20 +91,27 @@ async function main() {
       new Date(+(new Date()) - Math.floor(Math.random() * 1e10)).toISOString()
     );
 
+  const checkFind = async () => {
+    await testFind(
+      db, 'id', count, _ => ids[getRandomInt(0, n - 1)], val => idsCount[val]
+    );
+    await testFind(
+      db, 'person.age', count, _ => ages[getRandomInt(0, n - 1)],
+      val => agesCount[val]
+    );
+    await testFind(
+      db, 'created', count, _ => dates[getRandomInt(0, n - 1)],
+      val => datesCount[val]
+    );
+  };
+
   await testInserts(db, fields, n, size, i => ({
     id: ids[i], person: { age: ages[i] }, created: dates[i]
   }));
-  await testFind(
-    db, 'id', count, _ => ids[getRandomInt(0, n - 1)], val => idsCount[val]
-  );
-  await testFind(
-    db, 'person.age', count, _ => ages[getRandomInt(0, n - 1)],
-    val => agesCount[val]
-  );
-  await testFind(
-    db, 'created', count, _ => dates[getRandomInt(0, n - 1)],
-    val => datesCount[val]
-  );
+  await checkFind();
+  await (db as any)._index.drop();
+  await db.index(...fields);
+  await checkFind();
 }
 
 process.on('unhandledRejection', err => { throw err; });
