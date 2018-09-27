@@ -45,7 +45,7 @@ class JSONStore<T extends object = object> implements Store<T> {
       await this.file.open();
 
     const { value, start, length } =
-      await readJSON(this.file.read(position));
+      (await readJSON(this.file.read(position)).next()).value;
 
     if (!alreadyOpen)
       await this.file.close();
@@ -58,41 +58,19 @@ class JSONStore<T extends object = object> implements Store<T> {
     if (!alreadyOpen)
       await this.file.open();
 
-    const stream = this.file.read(0);
+    // Allow line-delimited JSON
+    const firstChar = String.fromCharCode(
+      (await this.file.read(0).next()).value[0][1]
+    );
 
-    async function* chain<T>(a: T, b: AsyncIterableIterator<T>) {
-      yield a;
-      yield* await b;
-    }
+    const stream = this.file.read(Number(firstChar == '['));
 
     try {
-      let chars: [number, number][] = [];
-      let last = -1;
-
-      while (true) {
-        if (last >= chars.length - 1) {
-          const res = await stream.next();
-          if (res.done)
-            break;
-          chars = res.value;
-          last = -1;
-        }
-
-        for (++last; last < chars.length; last++) {
-          const [, charCode] = chars[last];
-          if (charCode == 123) // left brace
-            break;
-        }
-
-        if (last == chars.length)
-          continue;
-
-        const result = await readJSON(chain(chars, stream), last);
-
+      const jsonStream = readJSON(stream);
+      let res;
+      while (!(res = await jsonStream.next()).done) {
+        const result = res.value;
         yield [result.start, result.value];
-
-        chars = result.chars;
-        last = result.index;
       }
     } finally {
       if (!alreadyOpen)

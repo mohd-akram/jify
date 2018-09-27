@@ -21,35 +21,27 @@ const enum Char {
   RightBracket = 93
 }
 
-export async function readJSON(
-  stream: AsyncIterableIterator<[number, number][]>, pos = 0, parse = true
+export async function* readJSON(
+  stream: AsyncIterableIterator<[number, number][]>, parse = true
 ) {
-  const charCodes: number[] = [];
-
+  let charCodes: number[] = [];
   let type = JSONType.Unknown;
   let start = -1;
   let length = 0;
+
   let depth = 0;
   let inString = false;
   let escaping = false;
-  let done = false;
-
-  let index = 0;
 
   let res: IteratorResult<[number, number][]>;
   while (!(res = await stream.next()).done) {
-    if (pos >= res.value.length) {
-      pos -= res.value.length;
-      continue;
-    }
-
-    index = pos;
-    pos = 0;
-
-    for (; index < res.value.length; index++) {
+    for (let index = 0; index < res.value.length; index++) {
       const [i, charCode] = res.value[index];
       if (start == -1) {
-        if (charCode == Char.Space || charCode == Char.Newline)
+        if (
+          charCode == Char.Space || charCode == Char.Newline ||
+          charCode == Char.Comma
+        )
           continue;
         else {
           start = i;
@@ -104,7 +96,6 @@ export async function readJSON(
             --depth;
             // We only know if a primitive ended on the next character
             // so undo it
-            --index;
             --length;
             if (parse)
               charCodes.pop();
@@ -113,26 +104,25 @@ export async function readJSON(
       }
 
       if (!depth) {
-        done = true;
-        break;
+        const result: {
+          start: number, length: number, value?: any
+        } = { start, length };
+
+        if (parse)
+          result.value = JSON.parse(
+            String.fromCharCode.apply(null, charCodes)
+          );
+
+        yield result;
+
+        // Reset
+        charCodes = [];
+        type = JSONType.Unknown;
+        start = -1;
+        length = 0;
       }
     }
-    if (done)
-      break;
   }
-
-  if (start == -1)
-    throw new Error('No JSON object found');
-
-  const result: {
-    start: number, length: number, index: number, chars: [number, number][],
-    value?: any
-  } = { start, length, index, chars: res.value };
-
-  if (parse)
-    result.value = JSON.parse(String.fromCharCode.apply(null, charCodes));
-
-  return result;
 }
 
 export function findJSONfield(text: string, field: string) {
