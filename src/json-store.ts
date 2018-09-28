@@ -21,9 +21,12 @@ class JSONStore<T extends object = object> implements Store<T> {
     await this.file.close();
   }
 
-  async create() {
+  async create(objects: T[] = []) {
+    const i = ' '.repeat(this.indent);
+    const content = objects.length ?
+      `\n${i}${objects.map(this.stringify.bind(this)).join(`,\n${i}`)}` : '';
     await this.file.open('wx');
-    await this.file.write(0, '[\n]\n');
+    await this.file.write(0, `[${content}\n]\n`);
     await this.file.close();
   }
 
@@ -40,41 +43,24 @@ class JSONStore<T extends object = object> implements Store<T> {
   }
 
   async get(position: number) {
-    const alreadyOpen = this.file.isOpen;
-    if (!alreadyOpen)
-      await this.file.open();
-
     const { value, start, length } =
       (await readJSON(this.file.read(position)).next()).value;
-
-    if (!alreadyOpen)
-      await this.file.close();
-
     return { value: value as T, start, length };
   }
 
   async *getAll() {
-    const alreadyOpen = this.file.isOpen;
-    if (!alreadyOpen)
-      await this.file.open();
-
     // Allow line-delimited JSON
     const firstChar = String.fromCharCode(
       (await this.file.read(0).next()).value[0][1]
     );
 
     const stream = this.file.read(Number(firstChar == '['));
+    const jsonStream = readJSON(stream);
 
-    try {
-      const jsonStream = readJSON(stream);
-      let res;
-      while (!(res = await jsonStream.next()).done) {
-        const result = res.value;
-        yield [result.start, result.value];
-      }
-    } finally {
-      if (!alreadyOpen)
-        await this.file.close();
+    let res;
+    while (!(res = await jsonStream.next()).done) {
+      const result = res.value;
+      yield [result.start, result.value];
     }
   }
 
@@ -123,13 +109,8 @@ class JSONStore<T extends object = object> implements Store<T> {
   }
 
   async set(position: number, value: any) {
-    const alreadyOpen = this.file.isOpen;
-    if (!alreadyOpen)
-      await this.file.open();
     const valueString = JSON.stringify(value);
     await this.file.write(position, valueString);
-    if (!alreadyOpen)
-      await this.file.close();
   }
 
   async lastModified() {

@@ -36,31 +36,16 @@ class File extends EventEmitter {
 
   async write(position: number, text: string) {
     ++this.writes;
-    const alreadyOpen = this.isOpen;
-    if (!alreadyOpen)
-      await this.open();
     await fsWrite(this.fd!, text, position);
-    if (!alreadyOpen)
-      await this.close();
   }
 
   async clear(position: number, length: number, char = ' ') {
-    const alreadyOpen = this.isOpen;
-    if (!alreadyOpen)
-      await this.open();
     const buffer = Buffer.alloc(length, char);
     await fsWrite(this.fd!, buffer, 0, length, position);
-    if (!alreadyOpen)
-      await this.close();
   }
 
   async truncate(position: number) {
-    const alreadyOpen = this.isOpen;
-    if (!alreadyOpen)
-      await this.open();
     await promisify(fs.ftruncate)(this.fd!, position);
-    if (!alreadyOpen)
-      await this.close();
   }
 
   async exists() {

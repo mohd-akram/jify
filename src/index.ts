@@ -16,10 +16,8 @@ class Index {
   }
 
   async create() {
-    await this.store.create();
-    await this.store.open();
-    await this.insertRootEntry();
-    await this.store.close();
+    const entry = new IndexEntry("", 0, new SkipListNode([]));
+    await this.store.create([entry.serialized()]);
   }
 
   async open() {
@@ -34,14 +32,15 @@ class Index {
     await this.store.destroy();
   }
 
+  get isOpen() {
+    return this.store.isOpen;
+  }
+
   async lastModified() {
     return await this.store.lastModified();
   }
 
   async beginTransaction(field: string) {
-    const alreadyOpen = this.store.isOpen;
-    if (!alreadyOpen)
-      await this.store.open();
     const head = await this.lockHead(field, true);
     const value = JSON.parse(head.node.value as string);
     if (value.tx)
@@ -50,14 +49,9 @@ class Index {
     head.node.value = JSON.stringify(value);
     await this.updateEntry(head);
     await this.unlockHead(head);
-    if (!alreadyOpen)
-      await this.store.close();
   }
 
   async endTransaction(field: string) {
-    const alreadyOpen = this.store.isOpen;
-    if (!alreadyOpen)
-      await this.store.open();
     const head = await this.lockHead(field, true);
     const value = JSON.parse(head.node.value as string);
     if (!value.tx)
@@ -66,8 +60,6 @@ class Index {
     head.node.value = JSON.stringify(value);
     await this.updateEntry(head);
     await this.unlockHead(head);
-    if (!alreadyOpen)
-      await this.store.close();
   }
 
   async insert(
@@ -78,10 +70,6 @@ class Index {
 
     if (!objectFields.length)
       return;
-
-    const alreadyOpen = this.store.isOpen;
-    if (!alreadyOpen)
-      await this.store.open();
 
     const fieldName = objectFields[0].name;
     const head = await this.lockHead(fieldName, true, cache);
@@ -198,9 +186,6 @@ class Index {
     this.logger.timeEnd(`updating index entries - ${fieldName}`);
 
     await this.unlockHead(head);
-
-    if (!alreadyOpen)
-      await this.store.close();
   }
 
   protected async indexObjectField(
@@ -272,10 +257,6 @@ class Index {
   }
 
   async getFields() {
-    const alreadyOpen = this.store.isOpen;
-    if (!alreadyOpen)
-      await this.store.open();
-
     let head = await this.getRootEntry();
 
     const fields: IndexField[] = [];
@@ -289,19 +270,12 @@ class Index {
       });
     }
 
-    if (!alreadyOpen)
-      await this.store.close();
-
     return fields;
   }
 
   async addFields(fields: IndexField[]) {
     if (!fields.length)
       return;
-
-    const alreadyOpen = this.store.isOpen;
-    if (!alreadyOpen)
-      await this.store.open();
 
     let head = await this.getRootEntry();
 
@@ -325,9 +299,6 @@ class Index {
       prevHead.link = head.position;
       await this.updateEntry(prevHead);
     }
-
-    if (!alreadyOpen)
-      await this.store.close();
   }
 
   protected async lockHead(
@@ -367,14 +338,6 @@ class Index {
     return entry;
   }
 
-  protected async insertRootEntry(cache?: IndexCache) {
-    const entry = new IndexEntry("", 0, new SkipListNode([]));
-    await this.insertEntry(entry);
-    if (cache)
-      cache.set(0, entry);
-    return entry;
-  }
-
   protected async insertEntry(
     entry: IndexEntry, cache?: IndexCache, position?: number
   ) {
@@ -407,10 +370,6 @@ class Index {
   }
 
   async find(field: string, predicate: Predicate<SkipListValue>) {
-    const alreadyOpen = this.store.isOpen;
-    if (!alreadyOpen)
-      await this.store.open();
-
     const cache: IndexCache = new Map();
 
     const head = await this.lockHead(field, false, cache);
@@ -467,9 +426,6 @@ class Index {
     }
 
     await this.unlockHead(head);
-
-    if (!alreadyOpen)
-      await this.store.close();
 
     return pointers;
   }

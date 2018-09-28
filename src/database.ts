@@ -42,8 +42,12 @@ class Database<T extends Record = Record> {
 
   async create(indexFields: (string | IndexField)[] = []) {
     await this.store.create();
-    await this._index.create();
-    await this._index.addFields(this.normalizeIndexFields(indexFields));
+    if (indexFields.length) {
+      await this._index.create();
+      await this._index.open();
+      await this._index.addFields(this.normalizeIndexFields(indexFields));
+      await this._index.close();
+    }
   }
 
   async drop() {
@@ -60,6 +64,11 @@ class Database<T extends Record = Record> {
     return new DatabaseIterableIterator<T>(async function* (this: Database<T>) {
       let positions: Set<number> | undefined;
 
+      let indexAlreadyOpen = this._index.isOpen;
+
+      if (!indexAlreadyOpen)
+        await this._index.open();
+
       for (const query of queries) {
         const queryPositions = await this.findQuery(query);
         if (!positions) {
@@ -70,21 +79,28 @@ class Database<T extends Record = Record> {
           positions.add(position);
       }
 
+      if (!indexAlreadyOpen)
+        await this._index.close();
+
       if (!positions)
         return;
 
-      for (const position of positions) {
-        const res = await this.store.get(position);
-        yield [res.start, res.value];
+      const alreadyOpen = this.store.isOpen;
+      if (!alreadyOpen)
+        await this.store.open();
+      try {
+        for (const position of positions) {
+          const res = await this.store.get(position);
+          yield [res.start, res.value];
+        }
+      } finally {
+        if (!alreadyOpen)
+          await this.store.close();
       }
     }.bind(this)());
   }
 
   protected async findQuery(query: Query) {
-    const alreadyOpen = this.store.isOpen;
-    if (!alreadyOpen)
-      await this.store.open();
-
     this.logger.time('find');
     let positions: Set<number> | undefined;
     for (const field in query) {
@@ -125,9 +141,6 @@ class Database<T extends Record = Record> {
     positions = positions || new Set();
     this.logger.timeEnd('find');
 
-    if (!alreadyOpen)
-      await this.store.close();
-
     return positions;
   }
 
@@ -138,15 +151,26 @@ class Database<T extends Record = Record> {
     if (!objects.length)
       return;
 
-    let indexFields: IndexField[] = [];
-    try {
-      indexFields = await this._index.getFields();
-    } catch (e) {
-      if (e.code != 'ENOENT')
-        throw e;
+    let indexAlreadyOpen = this._index.isOpen;
+    let indexExists = true;
+
+    if (!indexAlreadyOpen) {
+      try {
+        await this._index.open();
+      } catch (e) {
+        if (e.code != 'ENOENT')
+          throw e;
+        indexExists = false;
+      }
     }
-    for (const { name } of indexFields)
-      await this._index.beginTransaction(name);
+
+    let indexFields: IndexField[] = [];
+
+    if (indexExists) {
+      indexFields = await this._index.getFields();
+      for (const { name } of indexFields)
+        await this._index.beginTransaction(name);
+    }
 
     const alreadyOpen = this.store.isOpen;
     if (!alreadyOpen)
@@ -172,12 +196,14 @@ class Database<T extends Record = Record> {
 
       insertPosition = start + length;
 
-      for (const o of this.getObjectFields(object, start, indexFields)) {
-        const objectFields = objectFieldsMap[o.name];
-        if (objectFields)
-          objectFields.push(o);
-        else
-          objectFieldsMap[o.name] = [o];
+      if (indexExists) {
+        for (const o of this.getObjectFields(object, start, indexFields)) {
+          const objectFields = objectFieldsMap[o.name];
+          if (objectFields)
+            objectFields.push(o);
+          else
+            objectFieldsMap[o.name] = [o];
+        }
       }
     }
     this.logger.timeEnd('inserts');
@@ -191,35 +217,41 @@ class Database<T extends Record = Record> {
     if (!alreadyOpen)
       await this.store.close();
 
-    this.logger.time('indexing');
-    if (indexFields.length) {
-      await this._index.open();
-      await Promise.all(Object.values(objectFieldsMap).map(
-        objectFields => this._index.insert(objectFields))
-      );
-      await this._index.close();
-    }
-    this.logger.timeEnd('indexing');
+    if (indexExists) {
+      this.logger.time('indexing');
+      if (indexFields.length) {
+        await Promise.all(Object.values(objectFieldsMap).map(
+          objectFields => this._index.insert(objectFields))
+        );
+      }
+      this.logger.timeEnd('indexing');
+      for (const { name } of indexFields)
+        await this._index.endTransaction(name);
 
-    for (const { name } of indexFields)
-      await this._index.endTransaction(name);
+      if (!indexAlreadyOpen)
+        await this._index.close();
+    }
   }
 
   async index(...fields: (string | IndexField)[]) {
     let indexOutdated = false;
     let indexExists = true;
+    let indexAlreadyOpen = this._index.isOpen;
 
-    try {
-      indexOutdated = await this.isIndexOutdated();
-    } catch (e) {
-      if (e.code != 'ENOENT')
-        throw e;
-      indexExists = false;
+    if (!indexAlreadyOpen) {
+      try {
+        await this._index.open();
+      } catch (e) {
+        if (e.code != 'ENOENT')
+          throw e;
+        indexExists = false;
+      }
     }
 
     let currentIndexFields = new Map<string, IndexField>();
 
     if (indexExists) {
+      indexOutdated = await this.isIndexOutdated();
       currentIndexFields = new Map(
         (await this._index.getFields()).map(
           f => [f.name, f] as [string, IndexField]
@@ -233,11 +265,14 @@ class Database<T extends Record = Record> {
       }
     }
     if (indexOutdated) {
+      await this._index.close();
       await this._index.drop();
       indexExists = false;
     }
-    if (!indexExists)
+    if (!indexExists) {
       await this._index.create();
+      await this._index.open();
+    }
 
     const newIndexFields = new Map<string, IndexField>();
     for (const field of this.normalizeIndexFields(fields))
@@ -277,6 +312,9 @@ class Database<T extends Record = Record> {
 
     for (const { name } of indexFields)
       await this._index.endTransaction(name);
+
+    if (!indexAlreadyOpen)
+      await this._index.close();
   }
 
   private async waitForReady(subprocess: child_process.ChildProcess) {
