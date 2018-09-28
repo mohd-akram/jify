@@ -6,6 +6,25 @@ import JSONStore from './json-store';
 import { Query } from './query';
 import { logger } from './utils';
 
+class DatabaseIterableIterator<T> implements AsyncIterableIterator<T> {
+  constructor(protected iterator: AsyncIterableIterator<[number, T]>) { }
+  async next() {
+    const res = (await this.iterator.next()) as IteratorResult<any>;
+    if (!res.done)
+      res.value = res.value[1];
+    return res as IteratorResult<T>;
+  }
+  async toArray() {
+    const array = [];
+    for await (const i of this)
+      array.push(i);
+    return array;
+  }
+  [Symbol.asyncIterator]() {
+    return this;
+  }
+}
+
 class Database<T extends Record = Record> {
   protected store: JSONStore<T>;
   protected _index: Index;
@@ -27,7 +46,41 @@ class Database<T extends Record = Record> {
     await this._index.addFields(this.normalizeIndexFields(indexFields));
   }
 
-  async find(query: Query) {
+  async drop() {
+    await this.store.destroy();
+    try {
+      await this._index.drop();
+    } catch (e) {
+      if (e.code != 'ENOENT')
+        throw e;
+    }
+  }
+
+  find(...queries: Query[]) {
+    return new DatabaseIterableIterator<T>(async function* (this: Database<T>) {
+      let positions: Set<number> | undefined;
+
+      for (const query of queries) {
+        const queryPositions = await this.findQuery(query);
+        if (!positions) {
+          positions = queryPositions;
+          continue;
+        }
+        for (const position of queryPositions)
+          positions.add(position);
+      }
+
+      if (!positions)
+        return;
+
+      for (const position of positions) {
+        const res = await this.store.get(position);
+        yield [res.start, res.value];
+      }
+    }.bind(this)());
+  }
+
+  protected async findQuery(query: Query) {
     const alreadyOpen = this.store.isOpen;
     if (!alreadyOpen)
       await this.store.open();
@@ -57,33 +110,25 @@ class Database<T extends Record = Record> {
       const fieldPositions = await this._index.find(field, predicate);
 
       if (!positions) {
-        positions = new Set(fieldPositions);
+        positions = fieldPositions;
         continue;
       }
 
       const intersection = new Set<number>();
 
-      for (const pointer of fieldPositions)
-        if (positions.has(pointer))
-          intersection.add(pointer);
+      for (const position of fieldPositions)
+        if (positions.has(position))
+          intersection.add(position);
 
       positions = intersection;
     }
     positions = positions || new Set();
     this.logger.timeEnd('find');
 
-    this.logger.time('fetch');
-    const objects: T[] = [];
-    for (const pos of positions) {
-      const obj = (await this.store.get(pos)).value;
-      objects.push(obj);
-    }
-    this.logger.timeEnd('fetch');
-
     if (!alreadyOpen)
       await this.store.close();
 
-    return objects;
+    return positions;
   }
 
   async insert(objects: T | T[]) {
@@ -247,16 +292,6 @@ class Database<T extends Record = Record> {
     return new Promise(resolve => {
       subprocess.once('close', () => resolve());
     });
-  }
-
-  async drop() {
-    await this.store.destroy();
-    try {
-      await this._index.drop();
-    } catch (e) {
-      if (e.code != 'ENOENT')
-        throw e;
-    }
   }
 
   protected async isIndexOutdated() {

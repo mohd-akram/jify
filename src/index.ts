@@ -38,11 +38,6 @@ class Index {
     return await this.store.lastModified();
   }
 
-  async find(field: string, predicate: Predicate<SkipListValue>) {
-    const entries = await this.findEntries(field, predicate);
-    return entries.map(entry => entry.pointer);
-  }
-
   async beginTransaction(field: string) {
     const alreadyOpen = this.store.isOpen;
     if (!alreadyOpen)
@@ -411,7 +406,7 @@ class Index {
     );
   }
 
-  protected async findEntries(field: string, predicate: Predicate<SkipListValue>) {
+  async find(field: string, predicate: Predicate<SkipListValue>) {
     const alreadyOpen = this.store.isOpen;
     if (!alreadyOpen)
       await this.store.open();
@@ -452,7 +447,7 @@ class Index {
       current = current.node.next(0) ?
         await this.getEntry(current.node.next(0), cache) : null;
 
-    const entries: IndexEntry[] = [];
+    const pointers = new Set<number>();
 
     while (current) {
       let entry = current;
@@ -463,10 +458,10 @@ class Index {
         continue;
       if (!match)
         break;
-      entries.push(entry);
+      pointers.add(entry.pointer);
       while (entry.link) {
         const link = await this.getEntry(entry.link, cache);
-        entries.push(link);
+        pointers.add(link.pointer);
         entry = link;
       }
     }
@@ -476,7 +471,7 @@ class Index {
     if (!alreadyOpen)
       await this.store.close();
 
-    return entries;
+    return pointers;
   }
 }
 

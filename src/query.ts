@@ -1,5 +1,7 @@
-export function predicate<T>(ops: string[], ...values: T[]): Predicate<T> {
-  ops = ops.filter(o => o);
+export function predicate<T>(
+  strings: TemplateStringsArray, ...values: T[]
+): Predicate<T> {
+  let ops = strings.filter(o => o);
 
   if (!ops.length || ops.length > 2 || ops.length != values.length)
     throw new Error('Invalid predicate');

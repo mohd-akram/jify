@@ -22,7 +22,7 @@ const enum Char {
 }
 
 export async function* readJSON(
-  stream: AsyncIterableIterator<[number, number][]>, parse = true
+  stream: AsyncIterator<[number, number][]>, parse = true
 ) {
   let charCodes: number[] = [];
   let type = JSONType.Unknown;

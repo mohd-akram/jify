@@ -1,10 +1,13 @@
 import * as assert from 'assert';
 
 import Database, { Record } from '../src/database';
+import { predicate as p } from '../src/query';
 import { IndexField } from '../src/index';
 import * as utils from '../src/utils';
 
 const logger = utils.logger('test');
+
+/* Helpers */
 
 function getField(object: Record, field: string) {
   let value: any = object;
@@ -26,6 +29,23 @@ function fillArray(n: number, value: (i: number) => any) {
     count[val] = (count[val] || 0) + 1;
   }
   return { array, count };
+}
+
+function compareObjects(a: object, b: object) {
+  if (a == b)
+    return 0;
+  const keys =
+    Array.from(new Set(Object.keys(a).concat(Object.keys(b)))).sort();
+  for (const key of keys)
+    if ((a as any)[key] < (b as any)[key])
+      return -1;
+    else if ((a as any)[key] > (b as any)[key])
+      return 1;
+  return 0;
+}
+
+function sortObjectArray<T extends object>(arr: T[]) {
+  return arr.sort(compareObjects);
 }
 
 async function testInserts(
@@ -62,7 +82,7 @@ async function testFind(
   for (let i = 0; i < n; i++) {
     const val = value(i);
     logger.time(`find ${field}=${val}`);
-    const objects = await db.find({ [field]: val });
+    const objects = await db.find({ [field]: val }).toArray();
     logger.timeEnd(`find ${field}=${val}`);
     logger.log(`${objects.length} results`);
     assert.equal(objects.length, count(val));
@@ -71,11 +91,10 @@ async function testFind(
   }
 }
 
-async function main() {
-  const args = process.argv.slice(2);
-  const n = Number(args.shift()) || 10_000;
-  const size = Number(args.shift()) || 100_000;
-  const count = Math.min(n, 20);
+/* Tests */
+
+async function testInsertAndFind(n = 10_000, size = 100_000, count = 20) {
+  count = Math.min(n, count);
 
   const fields = [
     'id', 'person.age', { name: 'created', type: 'date-time' }
@@ -112,6 +131,74 @@ async function main() {
   await (db as any)._index.drop();
   await db.index(...fields);
   await checkFind();
+}
+
+async function testQueries() {
+  const db = new Database(`${__dirname}/data/people.json`);
+
+  try {
+    await db.drop();
+  } catch (e) {
+    if (e.code != 'ENOENT')
+      throw e;
+  }
+  await db.create();
+
+  await db.insert({ name: 'John', age: 42 });
+  await db.insert({ name: 'John', age: 43 });
+  await db.insert({ name: 'John', age: 17 });
+  await db.insert({ name: 'John', age: 18 });
+  await db.insert({ name: 'John', age: 20 });
+  await db.insert({ name: 'John', age: 35 });
+  await db.insert({ name: 'John', age: 50 });
+
+  await db.index('name', 'age');
+
+  let results = await db.find({ name: 'John', age: 42 }).toArray();
+  assert.deepEqual(
+    sortObjectArray(results), sortObjectArray([{ name: 'John', age: 42 }])
+  );
+
+  // age < 50
+  results = await db.find({ age: p`< ${50}` }).toArray();
+  assert.deepEqual(sortObjectArray(results), sortObjectArray([
+    { name: 'John', age: 42 },
+    { name: 'John', age: 43 },
+    { name: 'John', age: 17 },
+    { name: 'John', age: 18 },
+    { name: 'John', age: 20 },
+    { name: 'John', age: 35 }
+  ]));
+
+  // 18 <= age < 35
+  results = await db.find({ age: p`>= ${18} < ${35}` }).toArray();
+  assert.deepEqual(sortObjectArray(results), sortObjectArray([
+    { name: 'John', age: 18 },
+    { name: 'John', age: 20 }
+  ]));
+
+  // age < 18 or age > 35
+  results = await db.find({ age: p`< ${18}` }, { age: p`> ${35}` }).toArray();
+  assert.deepEqual(sortObjectArray(results), sortObjectArray([
+    { name: 'John', age: 42 },
+    { name: 'John', age: 43 },
+    { name: 'John', age: 17 },
+    { name: 'John', age: 50 }
+  ]));
+}
+
+async function main() {
+  const args = process.argv.slice(2);
+  const n = Number(args.shift()) || undefined;
+  const size = Number(args.shift()) || undefined;
+  const count = Number(args.shift()) || undefined;
+  const debug = process.env.DEBUG || '';
+  process.env.DEBUG = '';
+  await testInsertAndFind(1);
+  await testInsertAndFind(200, 20);
+  process.env.DEBUG = debug;
+  await testInsertAndFind(n, size, count);
+  await testQueries();
 }
 
 process.on('unhandledRejection', err => { throw err; });
