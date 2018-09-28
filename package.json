@@ -10,7 +10,9 @@
     "build": "tsc",
     "lint": "tslint -p .",
     "profile": "cd test && rollup -c | node --prof --no-logfile-per-isolate && node --prof-process v8.log > data/processed.txt && rm v8.log",
-    "test": "TS_NODE_FILES=true ts-node test"
+    "test": "TS_NODE_FILES=true ts-node test",
+    "prepare": "npm run build",
+    "version": "npm test"
   },
   "repository": {
     "type": "git",
@@ -27,12 +29,12 @@
   },
   "homepage": "https://github.com/mohd-akram/jify#readme",
   "devDependencies": {
-    "@types/node": "^10.9.4",
-    "rollup": "^0.65.0",
-    "rollup-plugin-typescript3": "^1.1.0",
+    "@types/node": "^10.11.3",
+    "rollup": "^0.66.2",
+    "rollup-plugin-typescript3": "^1.1.1",
     "ts-node": "^7.0.1",
     "tslint": "^5.11.0",
-    "typescript": "^3.0.3"
+    "typescript": "^3.1.1"
   },
   "dependencies": {
     "os-lock": "^1.0.0",
