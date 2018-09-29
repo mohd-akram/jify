@@ -36,32 +36,32 @@ export async function* readJSON(
   let res: IteratorResult<[number, number][]>;
   while (!(res = await stream.next()).done) {
     for (let index = 0; index < res.value.length; index++) {
-      const [i, charCode] = res.value[index];
+      const [i, codePoint] = res.value[index];
       if (start == -1) {
         if (
-          charCode == Char.Space || charCode == Char.Newline ||
-          charCode == Char.Comma
+          codePoint == Char.Space || codePoint == Char.Newline ||
+          codePoint == Char.Comma
         )
           continue;
         else {
           start = i;
-          if (charCode == Char.LeftBrace)
+          if (codePoint == Char.LeftBrace)
             type = JSONType.Object;
-          else if (charCode == Char.Quote)
+          else if (codePoint == Char.Quote)
             type = JSONType.String;
-          else if (charCode == Char.LeftBracket)
+          else if (codePoint == Char.LeftBracket)
             type = JSONType.Array;
         }
       }
 
       ++length;
       if (parse)
-        charCodes.push(charCode);
+        charCodes.push(codePoint);
 
-      const isStringQuote = charCode == Char.Quote && !escaping;
+      const isStringQuote = codePoint == Char.Quote && !escaping;
       if (escaping)
         escaping = false;
-      else if (charCode == Char.Backslash)
+      else if (codePoint == Char.Backslash)
         escaping = true;
 
       if (isStringQuote)
@@ -72,15 +72,15 @@ export async function* readJSON(
 
       switch (type) {
         case JSONType.Array:
-          if (charCode == Char.LeftBracket)
+          if (codePoint == Char.LeftBracket)
             ++depth;
-          else if (charCode == Char.RightBracket)
+          else if (codePoint == Char.RightBracket)
             --depth;
           break;
         case JSONType.Object:
-          if (charCode == Char.LeftBrace)
+          if (codePoint == Char.LeftBrace)
             ++depth;
-          else if (charCode == Char.RightBrace)
+          else if (codePoint == Char.RightBrace)
             --depth;
           break;
         case JSONType.String:
@@ -89,9 +89,9 @@ export async function* readJSON(
           break;
         default:
           if (
-            charCode == Char.Space || charCode == Char.Newline ||
-            charCode == Char.Comma || charCode == Char.RightBrace ||
-            charCode == Char.RightBracket
+            codePoint == Char.Space || codePoint == Char.Newline ||
+            codePoint == Char.Comma || codePoint == Char.RightBrace ||
+            codePoint == Char.RightBracket
           ) {
             --depth;
             // We only know if a primitive ended on the next character
@@ -110,7 +110,7 @@ export async function* readJSON(
 
         if (parse)
           result.value = JSON.parse(
-            String.fromCharCode.apply(null, charCodes)
+            String.fromCodePoint.apply(null, charCodes)
           );
 
         yield result;
@@ -170,7 +170,7 @@ export function findJSONfield(text: string, field: string) {
   return;
 }
 
-function utf8charcode(buf: Buffer, i: number) {
+function utf8codepoint(buf: Array<number> | Buffer, i = 0) {
   const c = buf[i];
   switch (c >> 4) {
     case 0: case 1: case 2: case 3: case 4: case 5: case 6: case 7:
@@ -223,6 +223,9 @@ export async function* read(
 
   let continuing = null;
 
+  let pendingBytes: number[] = [];
+  let pendingCount = 0;
+
   while (true) {
     if (!continuing) {
       charCount = 0;
@@ -246,12 +249,37 @@ export async function* read(
           count = count || 1;
         }
 
-        if (index < 0 || index + count > buffer.length)
-          throw new Error('Cannot handle this');
-
-        chars[charCount][0] = pos + index;
-        chars[charCount][1] = utf8charcode(buffer, index);
-        ++charCount;
+        // Handle UTF-8 characters split at buffer boundary
+        if (index < 0 || index + count > buffer.length) {
+          pendingCount = count;
+          const begin = Math.max(index, 0);
+          const end = Math.min(index + count, buffer.length);
+          for (let j = begin; j < end; j++) {
+            const c = buffer[j];
+            pendingBytes.push(c);
+          }
+        } else if (pendingCount) {
+          let pendingPos: number;
+          if (reverse) {
+            pendingPos = pos + index;
+            for (let j = count - 1; j >= 0; j--)
+              pendingBytes.unshift(buffer[index + j]);
+          } else {
+            pendingPos = pos + index - pendingBytes.length;
+            count = pendingCount - pendingBytes.length;
+            for (let j = 0; j < count; j++)
+              pendingBytes.push(buffer[index + j]);
+          }
+          chars[charCount][0] = pendingPos;
+          chars[charCount][1] = utf8codepoint(pendingBytes);
+          pendingBytes = [];
+          pendingCount = 0;
+          ++charCount;
+        } else {
+          chars[charCount][0] = pos + index;
+          chars[charCount][1] = utf8codepoint(buffer, index);
+          ++charCount;
+        }
 
         i += count;
       }

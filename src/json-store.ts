@@ -50,7 +50,7 @@ class JSONStore<T extends object = object> implements Store<T> {
 
   async *getAll() {
     // Allow line-delimited JSON
-    const firstChar = String.fromCharCode(
+    const firstChar = String.fromCodePoint(
       (await this.file.read(0).next()).value[0][1]
     );
 
@@ -68,13 +68,13 @@ class JSONStore<T extends object = object> implements Store<T> {
     let first = false;
     let position = 0;
     for await (const chars of this.file.read(-1, true)) {
-      for (const [i, charCode] of chars) {
-        if (charCode == 32 || charCode == 10) // space or newline
+      for (const [i, codePoint] of chars) {
+        if (codePoint == 32 || codePoint == 10) // space or newline
           continue;
         if (!position)
           position = i - 1;
         else {
-          if (charCode == 91) // left bracket
+          if (codePoint == 91) // left bracket
             first = true;
           break;
         }
