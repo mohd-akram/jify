@@ -67,6 +67,7 @@ class JSONStore<T extends object = object> implements Store<T> {
   async getAppendPosition() {
     let first = false;
     let position = 0;
+    let done = false;
     for await (const chars of this.file.read(-1, true)) {
       for (const [i, codePoint] of chars) {
         if (codePoint == 32 || codePoint == 10) // space or newline
@@ -76,9 +77,12 @@ class JSONStore<T extends object = object> implements Store<T> {
         else {
           if (codePoint == 91) // left bracket
             first = true;
+          done = true;
           break;
         }
       }
+      if (done)
+        break;
     }
     return { position, first };
   }
