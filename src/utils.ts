@@ -211,6 +211,7 @@ export async function* read(
 
   buffer = buffer || Buffer.alloc(1 << 12);
   const size = buffer.length;
+  let length = size;
 
   let pos = reverse ? position - size + 1 : position;
 
@@ -223,13 +224,10 @@ export async function* read(
 
   let continuing = null;
 
-  let pendingBytes: number[] = [];
-  let pendingCount = 0;
-
   while (true) {
     if (!continuing) {
       charCount = 0;
-      const length = Math.min(size, size + pos);
+      length = Math.min(size, size + pos);
 
       pos = Math.max(pos, 0);
 
@@ -250,32 +248,9 @@ export async function* read(
         }
 
         // Handle UTF-8 characters split at buffer boundary
-        if (index < 0 || index + count > buffer.length) {
-          pendingCount = count;
-          const begin = Math.max(index, 0);
-          const end = Math.min(index + count, buffer.length);
-          for (let j = begin; j < end; j++) {
-            const c = buffer[j];
-            pendingBytes.push(c);
-          }
-        } else if (pendingCount) {
-          let pendingPos: number;
-          if (reverse) {
-            pendingPos = pos + index;
-            for (let j = count - 1; j >= 0; j--)
-              pendingBytes.unshift(buffer[index + j]);
-          } else {
-            pendingPos = pos + index - pendingBytes.length;
-            count = pendingCount - pendingBytes.length;
-            for (let j = 0; j < count; j++)
-              pendingBytes.push(buffer[index + j]);
-          }
-          chars[charCount][0] = pendingPos;
-          chars[charCount][1] = utf8codepoint(pendingBytes);
-          pendingBytes = [];
-          pendingCount = 0;
-          ++charCount;
-        } else {
+        if (index < 0 || index + count > size)
+          length -= reverse ? index + count : size - index;
+        else {
           chars[charCount][0] = pos + index;
           chars[charCount][1] = utf8codepoint(buffer, index);
           ++charCount;
@@ -297,7 +272,7 @@ export async function* read(
       continuing = false;
       if (bytesRead < size || (reverse && !pos))
         break;
-      pos += reverse ? -size : size;
+      pos += reverse ? -length : length;
     } finally {
       if (continuing == null) {
         // If we reached here, then we didn't yield because the generator ended
