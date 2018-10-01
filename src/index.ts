@@ -434,16 +434,16 @@ class Index {
 export class IndexError extends Error { }
 IndexError.prototype.name = 'IndexError';
 
-export enum SkipListValueType {
+const enum SkipListValueType {
   Null,
   Boolean,
   Number,
   String
 }
 
-export type SkipListValue = null | boolean | number | string;
+type SkipListValue = null | boolean | number | string;
 
-export class SkipListNode {
+class SkipListNode {
   public levels: number[];
   public value: SkipListValue;
 
@@ -517,7 +517,7 @@ export class SkipListNode {
   }
 }
 
-export class IndexEntry {
+class IndexEntry {
   position: number = 0;
 
   field: string;
@@ -562,7 +562,7 @@ export class IndexEntry {
   }
 }
 
-export interface SerializedIndexEntry {
+interface SerializedIndexEntry {
   [field: string]: string;
 }
 
