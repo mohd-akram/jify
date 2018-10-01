@@ -1,6 +1,6 @@
 import File from './file';
 import Store from './store';
-import { readJSON } from './utils';
+import { Char, readJSON } from './utils';
 
 class JSONStore<T extends object = object> implements Store<T> {
   protected file: File;
@@ -66,16 +66,22 @@ class JSONStore<T extends object = object> implements Store<T> {
 
   async getAppendPosition() {
     let first = false;
-    let position = 0;
     let done = false;
+
+    let position: number | undefined;
+
     for await (const chars of this.file.read(-1, true)) {
       for (const [i, codePoint] of chars) {
-        if (codePoint == 32 || codePoint == 10) // space or newline
+        if (codePoint == Char.Space || codePoint == Char.Newline)
           continue;
-        if (!position)
+        if (!position) {
+          if (codePoint != Char.RightBracket) {
+            done = true;
+            break;
+          }
           position = i - 1;
-        else {
-          if (codePoint == 91) // left bracket
+        } else {
+          if (codePoint == Char.LeftBracket)
             first = true;
           done = true;
           break;
@@ -84,6 +90,10 @@ class JSONStore<T extends object = object> implements Store<T> {
       if (done)
         break;
     }
+
+    if (!position)
+      throw new Error('Invalid JSON file');
+
     return { position, first };
   }
 

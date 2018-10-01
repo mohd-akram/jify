@@ -9,7 +9,7 @@ const enum JSONType {
   Unknown, Array, Object, String
 }
 
-const enum Char {
+export const enum Char {
   Space = 32,
   Quote = 34,
   Comma = 44,

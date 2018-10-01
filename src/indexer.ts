@@ -2,17 +2,24 @@ import * as child_process from 'child_process';
 
 import Index, { ObjectField } from './index';
 
-function waitForClose(subprocess: child_process.ChildProcess) {
-  return new Promise(resolve => {
-    subprocess.once('close', () => resolve());
+async function waitForClose(subprocess: child_process.ChildProcess) {
+  const timeout = setInterval(() => { }, ~0 >>> 1);
+  await new Promise(resolve => {
+    subprocess.once('close', () => {
+      clearInterval(timeout);
+      resolve();
+    });
   });
 }
 
-function waitForReady(subprocess: child_process.ChildProcess) {
-  return new Promise(resolve => {
+async function waitForReady(subprocess: child_process.ChildProcess) {
+  const timeout = setInterval(() => { }, ~0 >>> 1);
+  await new Promise(resolve => {
     subprocess.once('message', message => {
-      if (message == 'ready')
+      if (message == 'ready') {
+        clearInterval(timeout);
         resolve();
+      }
     });
   });
 }

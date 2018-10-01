@@ -164,71 +164,72 @@ class Database<T extends Record = Record> {
       }
     }
 
-    let indexFields: IndexField[] = [];
-
-    if (indexExists) {
-      indexFields = await this._index.getFields();
-      for (const { name } of indexFields)
-        await this._index.beginTransaction(name);
-    }
-
     const alreadyOpen = this.store.isOpen;
     if (!alreadyOpen)
       await this.store.open();
     await this.store.lock(0, { exclusive: true });
 
-    const objectFieldsMap: { [field: string]: ObjectField[] } = {};
-
-    const { position: startPosition, first } =
-      await this.store.getAppendPosition();
-    let insertPosition = startPosition - Number(first);
-    let pendingRaw: string[] = [];
-
-    const offset = this.store.joiner.length;
-
-    this.logger.time('inserts');
-    for (const object of objects) {
-      const start = insertPosition + offset;
-
-      const raw = this.store.stringify(object);
-      const length = raw.length;
-      pendingRaw.push(raw);
-
-      insertPosition = start + length;
+    try {
+      let indexFields: IndexField[] = [];
 
       if (indexExists) {
-        for (const o of this.getObjectFields(object, start, indexFields)) {
-          const objectFields = objectFieldsMap[o.name];
-          if (objectFields)
-            objectFields.push(o);
-          else
-            objectFieldsMap[o.name] = [o];
+        indexFields = await this._index.getFields();
+        for (const { name } of indexFields)
+          await this._index.beginTransaction(name);
+      }
+
+      const objectFieldsMap: { [field: string]: ObjectField[] } = {};
+
+      const { position: startPosition, first } =
+        await this.store.getAppendPosition();
+      let insertPosition = startPosition - Number(first);
+      let pendingRaw: string[] = [];
+
+      const offset = this.store.joiner.length;
+
+      this.logger.time('inserts');
+      for (const object of objects) {
+        const start = insertPosition + offset;
+
+        const raw = this.store.stringify(object);
+        const length = raw.length;
+        pendingRaw.push(raw);
+
+        insertPosition = start + length;
+
+        if (indexExists) {
+          for (const o of this.getObjectFields(object, start, indexFields)) {
+            const objectFields = objectFieldsMap[o.name];
+            if (objectFields)
+              objectFields.push(o);
+            else
+              objectFieldsMap[o.name] = [o];
+          }
         }
       }
-    }
-    this.logger.timeEnd('inserts');
+      this.logger.timeEnd('inserts');
 
-    if (pendingRaw.length)
-      await this.store.appendRaw(
-        pendingRaw.join(this.store.joiner), startPosition, first
-      );
-
-    await this.store.unlock();
-    if (!alreadyOpen)
-      await this.store.close();
-
-    if (indexExists) {
-      this.logger.time('indexing');
-      if (indexFields.length) {
-        await Promise.all(Object.values(objectFieldsMap).map(
-          objectFields => this._index.insert(objectFields))
+      if (pendingRaw.length)
+        await this.store.appendRaw(
+          pendingRaw.join(this.store.joiner), startPosition, first
         );
-      }
-      this.logger.timeEnd('indexing');
-      for (const { name } of indexFields)
-        await this._index.endTransaction(name);
 
-      if (!indexAlreadyOpen)
+      if (indexExists) {
+        this.logger.time('indexing');
+        if (indexFields.length) {
+          await Promise.all(Object.values(objectFieldsMap).map(
+            objectFields => this._index.insert(objectFields))
+          );
+        }
+        this.logger.timeEnd('indexing');
+        for (const { name } of indexFields)
+          await this._index.endTransaction(name);
+      }
+    } finally {
+      await this.store.unlock();
+      if (!alreadyOpen)
+        await this.store.close();
+      if (indexExists && !indexAlreadyOpen)
         await this._index.close();
     }
   }
@@ -318,17 +319,24 @@ class Database<T extends Record = Record> {
   }
 
   private async waitForReady(subprocess: child_process.ChildProcess) {
-    return new Promise(resolve => {
+    const timeout = setInterval(() => { }, ~0 >>> 1);
+    await new Promise(resolve => {
       subprocess.once('message', message => {
-        if (message == 'ready')
+        if (message == 'ready') {
+          clearInterval(timeout);
           resolve();
+        }
       });
     });
   }
 
   private async waitForClose(subprocess: child_process.ChildProcess) {
-    return new Promise(resolve => {
-      subprocess.once('close', () => resolve());
+    const timeout = setInterval(() => { }, ~0 >>> 1);
+    await new Promise(resolve => {
+      subprocess.once('close', () => {
+        clearInterval(timeout);
+        resolve();
+      });
     });
   }
 

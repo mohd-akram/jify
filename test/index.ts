@@ -1,4 +1,6 @@
 import * as assert from 'assert';
+import * as fs from 'fs';
+import * as util from 'util';
 
 import Database, { Record } from '../src/database';
 import { predicate as p } from '../src/query';
@@ -8,6 +10,10 @@ import * as utils from '../src/utils';
 const logger = utils.logger('test');
 
 /* Helpers */
+
+function getFilename(filename: string) {
+  return `${__dirname}/data/${filename}`;
+}
 
 function getField(object: Record, field: string) {
   let value: any = object;
@@ -99,7 +105,7 @@ async function testInsertAndFind(n = 10_000, size = 100_000, count = 20) {
   const fields = [
     'id', 'person.age', { name: 'created', type: 'date-time' }
   ];
-  const db = new Database(`${__dirname}/data/data-insert-${n}.json`);
+  const db = new Database(getFilename(`data-insert-${n}.json`));
 
   const { array: ids, count: idsCount } =
     fillArray(n, _ => Math.random().toString(36));
@@ -134,7 +140,7 @@ async function testInsertAndFind(n = 10_000, size = 100_000, count = 20) {
 }
 
 async function testQueries() {
-  const db = new Database(`${__dirname}/data/people.json`);
+  const db = new Database(getFilename('people.json'));
 
   try {
     await db.drop();
@@ -187,18 +193,37 @@ async function testQueries() {
   ]));
 }
 
+async function testInvalid() {
+  const filename = getFilename('invalid.json');
+  try {
+    await util.promisify(fs.unlink)(filename);
+  } catch (e) {
+    if (e.code != 'ENOENT')
+      throw e;
+  }
+  const fd = await util.promisify(fs.open)(filename, 'wx');
+  await util.promisify(fs.close)(fd);
+  const db = new Database(filename);
+  await assert.rejects(db.insert({}));
+  await util.promisify(fs.writeFile)(filename, 'invalid');
+  await assert.rejects(db.insert({}));
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const n = Number(args.shift()) || undefined;
   const size = Number(args.shift()) || undefined;
   const count = Number(args.shift()) || undefined;
   const debug = process.env.DEBUG || '';
+
   process.env.DEBUG = '';
   await testInsertAndFind(1);
   await testInsertAndFind(200, 20);
+  await testQueries();
+  await testInvalid();
+
   process.env.DEBUG = debug;
   await testInsertAndFind(n, size, count);
-  await testQueries();
 }
 
 process.on('unhandledRejection', err => { throw err; });

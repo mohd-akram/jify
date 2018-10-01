@@ -109,9 +109,12 @@ class File extends EventEmitter {
       await lock(this.fd!, pos, 1, options);
       return;
     } else {
-      return new Promise(resolve => {
-        this.once('unlock', () => {
-          this.lock(pos, options).then(() => resolve());
+      const timeout = setInterval(() => { }, ~0 >>> 1);
+      await new Promise(resolve => {
+        this.once('unlock', async () => {
+          clearInterval(timeout);
+          await this.lock(pos, options);
+          resolve();
         });
       });
     }
