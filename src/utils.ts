@@ -24,7 +24,7 @@ export const enum Char {
 export async function* readJSON(
   stream: AsyncIterator<[number, number][]>, parse = true
 ) {
-  let charCodes: number[] = [];
+  let codePoints: number[] = [];
   let type = JSONType.Unknown;
   let start = -1;
   let length = 0;
@@ -56,7 +56,7 @@ export async function* readJSON(
 
       ++length;
       if (parse)
-        charCodes.push(codePoint);
+        codePoints.push(codePoint);
 
       const isStringQuote = codePoint == Char.Quote && !escaping;
       if (escaping)
@@ -98,7 +98,7 @@ export async function* readJSON(
             // so undo it
             --length;
             if (parse)
-              charCodes.pop();
+              codePoints.pop();
           } else if (!depth)
             ++depth;
       }
@@ -110,13 +110,13 @@ export async function* readJSON(
 
         if (parse)
           result.value = JSON.parse(
-            String.fromCodePoint.apply(null, charCodes)
+            String.fromCodePoint.apply(null, codePoints)
           );
 
         yield result;
 
         // Reset
-        charCodes = [];
+        codePoints = [];
         type = JSONType.Unknown;
         start = -1;
         length = 0;
