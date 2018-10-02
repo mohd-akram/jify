@@ -1,7 +1,7 @@
 jify
 ====
 
-jify is an experimental library for querying large (< 4GB) JSON files. It does
+jify is an experimental library for querying large (GBs) JSON files. It does
 this by first indexing the required fields. It can also be used as an
 append-only database.
 

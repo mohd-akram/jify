@@ -299,6 +299,22 @@ export function z85DecodeAsUInt32(string: string, compact = false) {
   return decoded.readUInt32BE(0);
 }
 
+const uintBuffer = Buffer.alloc(8);
+export function z85EncodeAsUInt(number: number, compact = false) {
+  uintBuffer.writeUIntBE(number, 2, 6);
+  const encoded = z85.encode(uintBuffer);
+  return compact ? encoded.replace(/^0+/, '') : encoded.slice(2);
+}
+
+export function z85DecodeAsUInt(string: string, compact = false) {
+  if (!compact && string.length != 8)
+    throw new Error('String must be 8 characters long');
+  else if (string.length > 8)
+    throw new Error('Cannot decode string longer than 8 characters');
+  const decoded = z85.decode(string.padStart(10, '0'));
+  return decoded.readUIntBE(2, 6);
+}
+
 const doubleBuffer = Buffer.alloc(8);
 export function z85EncodeAsDouble(number: number, compact = false) {
   doubleBuffer.writeDoubleBE(number, 0);

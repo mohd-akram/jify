@@ -2,7 +2,7 @@ import JSONStore from './json-store';
 import { Predicate } from './query';
 import {
   logger,
-  z85DecodeAsUInt32, z85EncodeAsUInt32,
+  z85DecodeAsUInt, z85EncodeAsUInt,
   z85DecodeAsDouble, z85EncodeAsDouble
 } from './utils';
 
@@ -469,10 +469,10 @@ class SkipListNode {
       const encodedNode = obj as string;
       const parts = encodedNode.split(';');
       const [encodedLevels, encodedType] = parts.slice(0, 2);
-      const type = z85DecodeAsUInt32(encodedType, true);
+      const type = z85DecodeAsUInt(encodedType, true);
       this.value = SkipListNode.decodeValue(type, parts.slice(2).join(';'));
       this.levels = encodedLevels ?
-        encodedLevels.split(',').map(l => z85DecodeAsUInt32(l)) : [];
+        encodedLevels.split(',').map(l => z85DecodeAsUInt(l)) : [];
     }
   }
 
@@ -488,13 +488,13 @@ class SkipListNode {
     if (this.isDuplicate)
       return ';;';
 
-    const encodedLevels = this.levels.map(l => z85EncodeAsUInt32(l)).join(',');
+    const encodedLevels = this.levels.map(l => z85EncodeAsUInt(l)).join(',');
 
-    const encodedType = z85EncodeAsUInt32(this.type, true);
+    const encodedType = z85EncodeAsUInt(this.type, true);
 
     let encodedValue = '';
     if (typeof this.value == 'boolean')
-      encodedValue = z85EncodeAsUInt32(Number(this.value), true);
+      encodedValue = z85EncodeAsUInt(Number(this.value), true);
     else if (typeof this.value == 'number')
       encodedValue = z85EncodeAsDouble(this.value, true);
     else if (typeof this.value == 'string')
@@ -506,7 +506,7 @@ class SkipListNode {
   protected static decodeValue(type: SkipListValueType, value: string) {
     switch (type) {
       case SkipListValueType.Boolean:
-        return Boolean(z85DecodeAsUInt32(value, true));
+        return Boolean(z85DecodeAsUInt(value, true));
       case SkipListValueType.Number:
         return z85DecodeAsDouble(value, true);
       case SkipListValueType.String:
@@ -543,15 +543,15 @@ class IndexEntry {
       const encodedPointer = encodedParts[0];
       const encodedLink = encodedParts[1];
       const encodedNode = encodedParts.slice(2).join(';');
-      this.pointer = z85DecodeAsUInt32(encodedPointer);
-      this.link = z85DecodeAsUInt32(encodedLink);
+      this.pointer = z85DecodeAsUInt(encodedPointer);
+      this.link = z85DecodeAsUInt(encodedLink);
       this.node = new SkipListNode(encodedNode);
     }
   }
 
   encoded() {
-    const encodedPointer = z85EncodeAsUInt32(this.pointer);
-    const encodedLink = z85EncodeAsUInt32(this.link);
+    const encodedPointer = z85EncodeAsUInt(this.pointer);
+    const encodedLink = z85EncodeAsUInt(this.link);
     return `${encodedPointer};${encodedLink};${this.node.encoded()}`;
   }
 
