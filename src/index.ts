@@ -7,7 +7,7 @@ import {
 } from './utils';
 
 class Index {
-  protected store: JSONStore<SerializedIndexEntry>;
+  protected store: JSONStore<string>;
   protected maxHeight = 32;
   protected logger = logger('index');
 
@@ -16,8 +16,8 @@ class Index {
   }
 
   async create() {
-    const entry = new IndexEntry("", 0, new SkipListNode([]));
-    await this.store.create([entry.serialized()]);
+    const entry = new IndexEntry(0, new SkipListNode([]));
+    await this.store.create([entry.encoded()]);
   }
 
   async open() {
@@ -126,7 +126,7 @@ class Index {
         const next = inserts[-pos - 1];
         entry.node.levels[i] = next.position;
       }
-      const raw = this.store.stringify(entry.serialized());
+      const raw = this.store.stringify(entry.encoded());
       insertPosition = position + raw.length;
       pendingRaw.push(raw);
     };
@@ -192,7 +192,7 @@ class Index {
     objectField: ObjectField, head: IndexEntry,
     cache: IndexCache = new Map(), inserts: IndexEntry[]
   ) {
-    const { name, value, position } = objectField;
+    const { value, position } = objectField;
 
     let height = head.node.levels.filter(p => p != 0).length;
 
@@ -230,8 +230,8 @@ class Index {
     const isDuplicate = prev.node.value == value;
 
     const entry = isDuplicate ?
-      new IndexEntry(name, position, new SkipListNode([], value)) :
-      new IndexEntry(name, position,
+      new IndexEntry(position, new SkipListNode([], value)) :
+      new IndexEntry(position,
         new SkipListNode(Array(level + 1).fill(0), value)
       );
 
@@ -259,15 +259,12 @@ class Index {
   async getFields() {
     let head = await this.getRootEntry();
 
-    const fields: IndexField[] = [];
+    const fields: IndexFieldInfo[] = [];
 
     while (head.link) {
       head = await this.getEntry(head.link);
-      const info = JSON.parse(head.node.value as string);
-      fields.push({
-        name: head.field,
-        ...info
-      });
+      const info: IndexFieldInfo = JSON.parse(head.node.value as string);
+      fields.push(info);
     }
 
     return fields;
@@ -281,17 +278,19 @@ class Index {
 
     while (head.link) {
       head = await this.getEntry(head.link);
-      fields = fields.filter(f => f.name != head.field);
+      const name =
+        (JSON.parse(head.node.value as string) as IndexFieldInfo).name;
+      fields = fields.filter(f => f.name != name);
     }
 
     let position: number | undefined;
     for (const field of fields) {
       const prevHead = head;
-      const info: IndexFieldInfo = { tx: 0 };
+      const info: IndexFieldInfo = { name: field.name, tx: 0 };
       if (field.type == 'date-time')
         info.type = field.type;
       head = new IndexEntry(
-        field.name, 0, new SkipListNode(
+        0, new SkipListNode(
           Array(this.maxHeight).fill(0), JSON.stringify(info)
         )
       );
@@ -305,10 +304,12 @@ class Index {
     field: string, exclusive = false, cache?: IndexCache
   ) {
     let head = await this.getRootEntry(cache);
+    let name = '';
 
-    while (head.field != field && head.link) {
+    while (name != field && head.link) {
       head = await this.getEntry(head.link, cache);
-      if (head.field == field) {
+      name = (JSON.parse(head.node.value as string) as IndexFieldInfo).name;
+      if (name == field) {
         // Lock and get the entry again since it might have changed
         // just before locking
         await this.store.lock(head.position, { exclusive });
@@ -316,7 +317,7 @@ class Index {
       }
     }
 
-    if (head.field != field)
+    if (name != field)
       throw new IndexError(`Field "${field}" missing from index`);
 
     return head;
@@ -342,7 +343,7 @@ class Index {
     entry: IndexEntry, cache?: IndexCache, position?: number
   ) {
     const { start, length } = await this.store.append(
-      entry.serialized(), position
+      entry.encoded(), position
     );
     entry.position = start;
     if (cache)
@@ -363,10 +364,7 @@ class Index {
   }
 
   protected async updateEntry(entry: IndexEntry) {
-    // offset 4 = 1 brace + 2 quotes + 1 colon
-    await this.store.set(
-      entry.position + 4 + entry.field.length, entry.encoded()
-    );
+    await this.store.set(entry.position, entry.encoded());
   }
 
   async find(field: string, predicate: Predicate<SkipListValue>) {
@@ -444,8 +442,8 @@ const enum SkipListValueType {
 type SkipListValue = null | boolean | number | string;
 
 class SkipListNode {
-  public levels: number[];
-  public value: SkipListValue;
+  public levels: number[] = [];
+  public value: SkipListValue = null;
 
   get type() {
     return typeof this.value == 'boolean' ? SkipListValueType.Boolean :
@@ -467,6 +465,8 @@ class SkipListNode {
       this.levels = levels;
     } else {
       const encodedNode = obj as string;
+      if (!encodedNode)
+        return;
       const parts = encodedNode.split(';');
       const [encodedLevels, encodedType] = parts.slice(0, 2);
       const type = z85DecodeAsUInt(encodedType, true);
@@ -486,7 +486,7 @@ class SkipListNode {
 
   encoded() {
     if (this.isDuplicate)
-      return ';;';
+      return '';
 
     const encodedLevels = this.levels.map(l => z85EncodeAsUInt(l)).join(',');
 
@@ -520,32 +520,27 @@ class SkipListNode {
 class IndexEntry {
   position: number = 0;
 
-  field: string;
-
   pointer: number; // Pointer to object in database
   link: number = 0; // Pointer to next duplicate in index
   node: SkipListNode;
 
-  constructor(serializedEntry: SerializedIndexEntry);
-  constructor(field: string, pointer: number, node: SkipListNode);
-  constructor(obj: any, pointer?: number, node?: SkipListNode) {
+  constructor(encodedEntry: string);
+  constructor(pointer: number, node: SkipListNode);
+  constructor(obj: any, node?: SkipListNode) {
     if (typeof obj == 'string') {
-      const field = obj;
-      if (pointer == null || !node)
-        throw new TypeError('pointer and node are required');
-      this.field = field;
-      this.pointer = pointer;
-      this.node = node;
-    } else {
-      const serializedEntry = obj as SerializedIndexEntry;
-      this.field = Object.keys(serializedEntry)[0];
-      const encodedParts = serializedEntry[this.field].split(';');
+      const encodedEntry = obj as string;
+      const encodedParts = encodedEntry.split(';');
       const encodedPointer = encodedParts[0];
       const encodedLink = encodedParts[1];
       const encodedNode = encodedParts.slice(2).join(';');
       this.pointer = z85DecodeAsUInt(encodedPointer);
       this.link = z85DecodeAsUInt(encodedLink);
       this.node = new SkipListNode(encodedNode);
+    } else {
+      if (obj == null || !node)
+        throw new TypeError('pointer and node are required');
+      this.pointer = obj;
+      this.node = node;
     }
   }
 
@@ -554,16 +549,6 @@ class IndexEntry {
     const encodedLink = z85EncodeAsUInt(this.link);
     return `${encodedPointer};${encodedLink};${this.node.encoded()}`;
   }
-
-  serialized(): SerializedIndexEntry {
-    return {
-      [this.field]: this.encoded()
-    };
-  }
-}
-
-interface SerializedIndexEntry {
-  [field: string]: string;
 }
 
 export interface ObjectField {
@@ -572,13 +557,13 @@ export interface ObjectField {
   position: number;
 }
 
-interface IndexFieldInfo {
-  type?: string;
+export interface IndexFieldInfo extends IndexField {
   tx?: number;
 }
 
-export interface IndexField extends IndexFieldInfo {
+export interface IndexField {
   name: string;
+  type?: string;
 }
 
 export type IndexCache = Map<number, IndexEntry>;

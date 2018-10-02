@@ -1,7 +1,7 @@
 import * as path from 'path';
 import * as child_process from 'child_process';
 
-import Index, { IndexField, ObjectField } from './index';
+import Index, { IndexField, IndexFieldInfo, ObjectField } from './index';
 import JSONStore from './json-store';
 import { Query } from './query';
 import { logger } from './utils';
@@ -249,13 +249,13 @@ class Database<T extends Record = Record> {
       }
     }
 
-    let currentIndexFields = new Map<string, IndexField>();
+    let currentIndexFields = new Map<string, IndexFieldInfo>();
 
     if (indexExists) {
       indexOutdated = await this.isIndexOutdated();
       currentIndexFields = new Map(
         (await this._index.getFields()).map(
-          f => [f.name, f] as [string, IndexField]
+          f => [f.name, f] as [string, IndexFieldInfo]
         )
       );
       for (const field of currentIndexFields.values()) {

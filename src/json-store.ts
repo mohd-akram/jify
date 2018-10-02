@@ -2,7 +2,7 @@ import File from './file';
 import Store from './store';
 import { Char, readJSON } from './utils';
 
-class JSONStore<T extends object = object> implements Store<T> {
+class JSONStore<T> implements Store<T> {
   protected file: File;
 
   constructor(filename: string, protected indent = 2) {
