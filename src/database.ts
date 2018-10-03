@@ -296,6 +296,12 @@ class Database<T extends Record = Record> {
       `${__dirname}/indexer`,
       [this._index.filename, ...(indexFields.map(i => i.name))]
     );
+    subprocess.once('error', err => { throw err; });
+    subprocess.once('exit', code => {
+      if (code)
+        throw new Error('Error in subprocess');
+    });
+
     await this.waitForReady(subprocess);
 
     const alreadyOpen = this.store.isOpen;

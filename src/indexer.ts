@@ -34,6 +34,11 @@ async function main(args: string[]) {
 
   for (const name of fieldNames) {
     subprocesses[name] = child_process.fork(__filename, [filename, name]);
+    subprocesses[name].once('error', err => { throw err; });
+    subprocesses[name].once('exit', code => {
+      if (code)
+        throw new Error('Error in subprocess');
+    });
     batches[name] = [];
   }
 
@@ -108,5 +113,7 @@ async function main(args: string[]) {
   if (process.send)
     process.send('ready');
 }
+
+process.on('unhandledRejection', err => { throw err; });
 
 main(process.argv);
