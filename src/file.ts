@@ -27,11 +27,11 @@ class File extends EventEmitter {
     return this.fd != null;
   }
 
-  read(position: number, reverse = false) {
+  read(position: number, reverse = false, buffer?: Buffer) {
     ++this.reads;
     if (!this.fd)
       throw new Error('Need to call open() before read()');
-    return read(this.fd, position, reverse);
+    return read(this.fd, position, reverse, buffer);
   }
 
   async write(position: number, text: string) {

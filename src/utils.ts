@@ -22,9 +22,9 @@ export const enum Char {
 }
 
 export async function* readJSON(
-  stream: AsyncIterator<[number, number][]>, parse = true
+  stream: AsyncIterator<number[]>, parse = true
 ) {
-  let codePoints: number[] = [];
+  let charCodes: number[] = [];
   let type = JSONType.Unknown;
   let start = -1;
   let length = 0;
@@ -33,10 +33,10 @@ export async function* readJSON(
   let inString = false;
   let escaping = false;
 
-  let res: IteratorResult<[number, number][]>;
+  let res: IteratorResult<number[]>;
   while (!(res = await stream.next()).done) {
-    for (let index = 0; index < res.value.length; index++) {
-      const [i, codePoint] = res.value[index];
+    for (let i = 0; i < res.value.length; i += 2) {
+      const codePoint = res.value[i + 1];
       if (start == -1) {
         if (
           codePoint == Char.Space || codePoint == Char.Newline ||
@@ -44,7 +44,7 @@ export async function* readJSON(
         )
           continue;
         else {
-          start = i;
+          start = res.value[i];
           if (codePoint == Char.LeftBrace)
             type = JSONType.Object;
           else if (codePoint == Char.Quote)
@@ -55,8 +55,13 @@ export async function* readJSON(
       }
 
       ++length;
-      if (parse)
-        codePoints.push(codePoint);
+      if (parse) {
+        if (codePoint > 0xFFFF) {
+          const code = codePoint - 0x10000;
+          charCodes.push(0xD800 | (code >> 10), 0xDC00 | (code & 0x3FF));
+        } else
+          charCodes.push(codePoint);
+      }
 
       const isStringQuote = codePoint == Char.Quote && !escaping;
       if (escaping)
@@ -98,7 +103,7 @@ export async function* readJSON(
             // so undo it
             --length;
             if (parse)
-              codePoints.pop();
+              charCodes.pop();
           } else if (!depth)
             ++depth;
       }
@@ -110,13 +115,13 @@ export async function* readJSON(
 
         if (parse)
           result.value = JSON.parse(
-            String.fromCodePoint.apply(null, codePoints)
+            String.fromCharCode.apply(null, charCodes)
           );
 
         yield result;
 
         // Reset
-        codePoints = [];
+        charCodes = [];
         type = JSONType.Unknown;
         start = -1;
         length = 0;
@@ -215,9 +220,7 @@ export async function* read(
 
   let pos = reverse ? position - size + 1 : position;
 
-  const chars: [number, number][] = Array(size);
-  for (let i = 0; i < size; i++)
-    chars[i] = Array(2) as [number, number];
+  const chars: number[] = Array(size * 2);
 
   let bytesRead = 0;
   let charCount = 0;
@@ -251,9 +254,8 @@ export async function* read(
         if (index < 0 || index + count > size)
           length -= reverse ? index + count : size - index;
         else {
-          chars[charCount][0] = pos + index;
-          chars[charCount][1] = utf8codepoint(buffer, index);
-          ++charCount;
+          chars[charCount++] = pos + index;
+          chars[charCount++] = utf8codepoint(buffer, index);
         }
 
         i += count;
@@ -263,7 +265,7 @@ export async function* read(
     continuing = null;
 
     try {
-      if (charCount == size)
+      if (charCount == chars.length)
         yield chars;
       else
         yield chars.slice(0, charCount);

@@ -50,15 +50,16 @@ class JSONStore<T> implements Store<T> {
 
   async *getAll() {
     // Allow line-delimited JSON
-    const firstChar = String.fromCodePoint(
-      (await this.file.read(0).next()).value[0][1]
+    const start = Number(
+      (await this.file.read(0).next()).value[1] == Char.LeftBracket
     );
 
-    const stream = this.file.read(Number(firstChar == '['));
-    const jsonStream = readJSON(stream);
+    const stream = readJSON(
+      this.file.read(start, false, Buffer.alloc(1 << 16))
+    );
 
     let res;
-    while (!(res = await jsonStream.next()).done) {
+    while (!(res = await stream.next()).done) {
       const result = res.value;
       yield [result.start, result.value];
     }
@@ -71,7 +72,8 @@ class JSONStore<T> implements Store<T> {
     let position: number | undefined;
 
     for await (const chars of this.file.read(-1, true)) {
-      for (const [i, codePoint] of chars) {
+      for (let i = 0; i < chars.length; i += 2) {
+        const codePoint = chars[i + 1];
         if (codePoint == Char.Space || codePoint == Char.Newline)
           continue;
         if (!position) {
@@ -79,7 +81,7 @@ class JSONStore<T> implements Store<T> {
             done = true;
             break;
           }
-          position = i - 1;
+          position = chars[i] - 1;
         } else {
           if (codePoint == Char.LeftBracket)
             first = true;
