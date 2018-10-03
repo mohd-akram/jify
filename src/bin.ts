@@ -106,6 +106,6 @@ async function main() {
   }
 }
 
-process.on('unhandledRejection', err => { throw err; });
+process.once('unhandledRejection', err => { throw err; });
 
 main();

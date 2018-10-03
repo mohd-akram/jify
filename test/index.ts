@@ -226,6 +226,6 @@ async function main() {
   await testInsertAndFind(n, size, count);
 }
 
-process.on('unhandledRejection', err => { throw err; });
+process.once('unhandledRejection', err => { throw err; });
 
 main();

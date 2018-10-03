@@ -114,6 +114,6 @@ async function main(args: string[]) {
     process.send('ready');
 }
 
-process.on('unhandledRejection', err => { throw err; });
+process.once('unhandledRejection', err => { throw err; });
 
 main(process.argv);
