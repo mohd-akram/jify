@@ -292,30 +292,47 @@ class Database<T extends Record = Record> {
     for (const { name } of indexFields)
       await this._index.beginTransaction(name);
 
-    const subprocess = child_process.fork(
-      `${__dirname}/indexer`,
-      [this._index.filename, ...(indexFields.map(i => i.name))]
-    );
-    subprocess.once('error', err => { throw err; });
-    subprocess.once('exit', code => {
-      if (code != 0) // Can be null
-        throw new Error('Error in subprocess');
-    });
+    const subprocesses: { [field: string]: child_process.ChildProcess } = {};
+    const batches: { [field: string]: ObjectField[] } = {};
 
-    await this.waitForReady(subprocess);
+    for (const { name } of indexFields) {
+      subprocesses[name] = child_process.fork(
+        `${__dirname}/indexer`, [this._index.filename]
+      );
+      subprocesses[name].once('error', err => { throw err; });
+      subprocesses[name].once('exit', code => {
+        if (code != 0) // Can be null
+          throw new Error('Error in subprocess');
+      });
+      batches[name] = [];
+    }
+
+    await Promise.all(Object.values(subprocesses).map(Database.waitForReady));
 
     const alreadyOpen = this.store.isOpen;
     if (!alreadyOpen)
       await this.store.open();
     this.logger.time('read records');
-    for await (const [pos, object] of this.store.getAll())
-      subprocess.send(this.getObjectFields(object, pos, indexFields));
+    for await (const [pos, object] of this.store.getAll()) {
+      for (const o of this.getObjectFields(object, pos, indexFields)) {
+        const batch = batches[o.name];
+        batch.push(o);
+        if (batch.length == 10_000) {
+          batches[o.name] = [];
+          subprocesses[o.name].send(batch);
+        }
+      }
+    }
     this.logger.timeEnd('read records');
     if (!alreadyOpen)
       await this.store.close();
 
-    subprocess.send(null);
-    await this.waitForClose(subprocess);
+    for (const [name, subprocess] of Object.entries(subprocesses)) {
+      subprocess.send(batches[name]);
+      subprocess.send(null);
+    }
+
+    await Promise.all(Object.values(subprocesses).map(Database.waitForClose));
 
     for (const { name } of indexFields)
       await this._index.endTransaction(name);
@@ -324,7 +341,7 @@ class Database<T extends Record = Record> {
       await this._index.close();
   }
 
-  private async waitForReady(subprocess: child_process.ChildProcess) {
+  private static async waitForReady(subprocess: child_process.ChildProcess) {
     const timeout = setInterval(() => { }, ~0 >>> 1);
     await new Promise(resolve => {
       subprocess.once('message', message => {
@@ -336,7 +353,7 @@ class Database<T extends Record = Record> {
     });
   }
 
-  private async waitForClose(subprocess: child_process.ChildProcess) {
+  private static async waitForClose(subprocess: child_process.ChildProcess) {
     const timeout = setInterval(() => { }, ~0 >>> 1);
     await new Promise(resolve => {
       subprocess.once('close', () => {
