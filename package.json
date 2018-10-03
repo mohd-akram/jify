@@ -3,6 +3,7 @@
   "version": "0.2.0",
   "description": "An indexed JSON file database",
   "main": "lib/main.js",
+  "bin": "lib/bin.js",
   "files": [
     "lib"
   ],
@@ -29,6 +30,7 @@
   },
   "homepage": "https://github.com/mohd-akram/jify#readme",
   "devDependencies": {
+    "@types/argparse": "^1.0.35",
     "@types/node": "^10.11.3",
     "rollup": "^0.66.2",
     "rollup-plugin-typescript3": "^1.1.1",
@@ -37,6 +39,7 @@
     "typescript": "^3.1.1"
   },
   "dependencies": {
+    "argparse": "^1.0.10",
     "os-lock": "^1.0.0",
     "z85": "^0.0.2"
   }

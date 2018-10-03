@@ -1,5 +1,5 @@
 import Database from './database';
-import { predicate } from './query';
+import { predicate, Query } from './query';
 
 export default Database;
-export { Database, predicate };
+export { Database, predicate, Query };
