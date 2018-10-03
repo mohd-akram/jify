@@ -1,8 +1,8 @@
 jify
 ====
 
-jify is an experimental library for querying large (GBs) JSON files. It does
-this by first indexing the required fields. It can also be used as an
+jify is an experimental library/tool for querying large (GBs) JSON files. It
+does this by first indexing the required fields. It can also be used as an
 append-only database.
 
 Install
@@ -16,35 +16,75 @@ Usage
 ```javascript
 const { Database, predicate: p } = require('jify');
 
-const db = new Database('data.json');
+async function main() {
+  const db = new Database('books.json');
 
-await db.create();
+  // Create
+  await db.create();
 
-// Insert - Single
-await db.insert({ name: 'John', age: 42 });
+  // Insert - Single
+  await db.insert({
+    title: 'Robinson Crusoe',
+    year: 1719,
+    author: { name: 'Daniel Defoe' }
+  });
 
-// Insert - Batch
-await db.insert([
-  { name: 'John', age: 17 },
-  { name: 'Jack', age: 18 },
-  { name: 'Jason', age: 20 },
-  { name: 'Jim', age: 35 },
-  { name: 'Jane', age: 50 }
-]);
+  // Insert - Batch
+  await db.insert([
+    {
+      title: 'Great Expectations',
+      year: 1861,
+      author: { name: 'Charles Dickens' }
+    },
+    {
+      title: 'Oliver Twist',
+      year: 1838,
+      author: { name: 'Charles Dickens' }
+    },
+    {
+      title: 'Pride and Prejudice',
+      year: 1813,
+      author: { name: 'Jane Austen' }
+    },
+    {
+      title: 'Nineteen Eighty-Four',
+      year: 1949,
+      author: { name: 'George Orwell' }
+    }
+  ]);
 
-// Index
-await db.index('name', 'age');
+  // Index
+  await db.index('title', 'year', 'author.name');
 
-// Query
-for await (const record of db.find({ name: 'John', age: 42 }))
-  console.log(record);
+  // Query
+  console.log('author.name = Charles Dickens, year > 1840');
+  const query = { 'author.name': 'Charles Dickens', year: p`> ${1840}` };
+  for await (const record of db.find(query))
+    console.log(record);
 
-// age < 50
-records = await db.find({ age: p`< ${50}` }).toArray();
+  let records;
 
-// 18 <= age < 35
-records = await db.find({ age: p`>= ${18} < ${35}` }).toArray();
+  // Range query
+  console.log('1800 <= year < 1900');
+  records = await db.find({ year: p`>= ${1800} < ${1900}` }).toArray();
+  console.log(records);
 
-// age < 18 or age > 35
-records = await db.find({ age: p`< ${18}` }, { age: p`> ${35}` }).toArray();
+  // Multiple queries
+  console.log('year < 1800 or year > 1900');
+  records = await db.find(
+    { year: p`< ${1800}` }, { year: p`> ${1900}` }
+  ).toArray();
+  console.log(records);
+}
+
+main();
+```
+
+### CLI
+
+```terminal
+$ jify index --field title --field author.name --field year books.json
+$ jify find --query "author.name=Charles Dickens,year>1840" books.json
+$ jify find --query "year>=1800<1900" books.json
+$ jify find --query "year<1800" --query "year>1900" books.json
 ```
