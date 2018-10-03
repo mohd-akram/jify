@@ -36,7 +36,7 @@ async function main(args: string[]) {
     subprocesses[name] = child_process.fork(__filename, [filename, name]);
     subprocesses[name].once('error', err => { throw err; });
     subprocesses[name].once('exit', code => {
-      if (code)
+      if (code != 0) // Can be null
         throw new Error('Error in subprocess');
     });
     batches[name] = [];

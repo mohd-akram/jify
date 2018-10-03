@@ -298,7 +298,7 @@ class Database<T extends Record = Record> {
     );
     subprocess.once('error', err => { throw err; });
     subprocess.once('exit', code => {
-      if (code)
+      if (code != 0) // Can be null
         throw new Error('Error in subprocess');
     });
 
