@@ -93,16 +93,16 @@ class Index {
     }
 
     const inserts: IndexEntry[] = [];
-    const updates = new Set<number>();
+    const updates = new Map<number, IndexEntry>();
 
     this.logger.time(`traversing index entries - ${fieldName}`);
     for (const objectField of objectFields) {
-      const positions = await this.indexObjectField(
+      const entries = await this.indexObjectField(
         objectField, head!, cache, inserts
       );
-      for (const position of positions)
-        if (position > 0)
-          updates.add(position);
+      for (const entry of entries)
+        if (entry.position > 0)
+          updates.set(entry.position, entry);
     }
     this.logger.timeEnd(`traversing index entries - ${fieldName}`);
 
@@ -165,15 +165,8 @@ class Index {
 
     await this.store.unlock();
 
-    // Update the cache after unlocking as it is slow
-    for (let i = 0; i < inserts.length; i++) {
-      const entry = inserts[i];
-      cache.set(entry.position, entry);
-    }
-
     this.logger.time(`updating index entries - ${fieldName}`);
-    for (const pos of updates) {
-      const entry = cache.get(pos)!;
+    for (const entry of updates.values()) {
       for (let i = 0; i < entry.node.levels.length; i++) {
         const p = entry.node.levels[i];
         if (p < 0)
@@ -241,19 +234,16 @@ class Index {
     if (isDuplicate) {
       entry.link = prev.link;
       prev.link = entry.position;
-      return new Set([prev.position]);
+      return [prev];
     }
-
-    const positions = new Set<number>();
 
     for (let i = 0; i <= level; i++) {
       const current = updates[updates.length - i - 1];
       entry.node.levels[i] = current.node.next(i);
       current.node.levels[i] = entry.position;
-      positions.add(current.position);
     }
 
-    return positions;
+    return updates;
   }
 
   async getFields() {
@@ -566,6 +556,9 @@ export interface IndexField {
   type?: string;
 }
 
-export type IndexCache = Map<number, IndexEntry>;
+export interface IndexCache {
+  get(key: number): IndexEntry | undefined;
+  set(key: number, value: IndexEntry): void;
+}
 
 export default Index;

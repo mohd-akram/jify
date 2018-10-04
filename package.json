@@ -41,6 +41,7 @@
   "dependencies": {
     "argparse": "^1.0.10",
     "os-lock": "^1.0.0",
+    "tiny-lru": "^1.6.1",
     "z85": "^0.0.2"
   }
 }

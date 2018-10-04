@@ -1,9 +1,11 @@
+import lru from 'tiny-lru';
+
 import Index, { ObjectField, IndexCache } from './index';
 
 const size = 1_000_000;
 let batch: ObjectField[] = [];
 
-const cache: IndexCache = new Map();
+const cache: IndexCache = lru(size);
 
 async function main(filename: string) {
   const index = new Index(filename);
