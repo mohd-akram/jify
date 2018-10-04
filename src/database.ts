@@ -301,8 +301,13 @@ class Database<T extends Record = Record> {
       );
       subprocesses[name].once('error', err => { throw err; });
       subprocesses[name].once('exit', code => {
-        if (code != 0) // Can be null
+        // Can be null
+        if (code != 0) {
+          delete subprocesses[name];
+          for (const subprocess of Object.values(subprocesses))
+            subprocess.kill();
           throw new Error('Error in subprocess');
+        }
       });
       batches[name] = [];
     }
