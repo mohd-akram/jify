@@ -27,7 +27,6 @@ export async function* readJSON(
   let charCodes: number[] = [];
   let type = JSONType.Unknown;
   let start = -1;
-  let length = 0;
 
   let depth = 0;
   let inString = false;
@@ -54,7 +53,6 @@ export async function* readJSON(
         }
       }
 
-      ++length;
       if (parse) {
         if (codePoint > 0xFFFF) {
           const code = codePoint - 0x10000;
@@ -99,9 +97,6 @@ export async function* readJSON(
             codePoint == Char.RightBracket
           ) {
             --depth;
-            // We only know if a primitive ended on the next character
-            // so undo it
-            --length;
             if (parse)
               charCodes.pop();
           } else if (!depth)
@@ -109,6 +104,8 @@ export async function* readJSON(
       }
 
       if (!depth) {
+        const length = res.value[i] - start + Number(type != JSONType.Unknown);
+
         const result: {
           start: number, length: number, value?: any
         } = { start, length };
@@ -124,7 +121,6 @@ export async function* readJSON(
         charCodes = [];
         type = JSONType.Unknown;
         start = -1;
-        length = 0;
       }
     }
   }
