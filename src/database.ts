@@ -180,22 +180,28 @@ class Database<T extends Record = Record> {
 
       const objectFieldsMap: { [field: string]: ObjectField[] } = {};
 
-      const { position: startPosition, first } =
+      let { position: startPosition, first } =
         await this.store.getAppendPosition();
       let insertPosition = startPosition - Number(first);
-      let pendingRaw: string[] = [];
+      const pendingRaw: Buffer[] = [];
 
+      let joiner = first ? this.store.joiner.slice(1) : this.store.joiner;
       const offset = this.store.joiner.length;
 
       this.logger.time('inserts');
       for (const object of objects) {
         const start = insertPosition + offset;
 
-        const raw = this.store.stringify(object);
-        const length = raw.length;
+        const raw = Buffer.from(`${joiner}${this.store.stringify(object)}`);
+
+        if (first) {
+          joiner = this.store.joiner;
+          first = false;
+        }
+
         pendingRaw.push(raw);
 
-        insertPosition = start + length;
+        insertPosition += raw.length;
 
         if (indexExists) {
           for (const o of this.getObjectFields(object, start, indexFields)) {
@@ -209,10 +215,8 @@ class Database<T extends Record = Record> {
       }
       this.logger.timeEnd('inserts');
 
-      if (pendingRaw.length)
-        await this.store.appendRaw(
-          pendingRaw.join(this.store.joiner), startPosition, first
-        );
+      pendingRaw.push(Buffer.from(this.store.trail));
+      await this.store.write(Buffer.concat(pendingRaw), startPosition);
 
       if (indexExists) {
         this.logger.time('indexing');

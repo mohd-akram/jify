@@ -5,6 +5,8 @@ import { Char, readJSON } from './utils';
 class JSONStore<T> implements Store<T> {
   protected file: File;
 
+  trail = '\n]\n';
+
   constructor(filename: string, protected indent = 2) {
     this.file = new File(filename);
   }
@@ -22,11 +24,12 @@ class JSONStore<T> implements Store<T> {
   }
 
   async create(objects: T[] = []) {
-    const i = ' '.repeat(this.indent);
     const content = objects.length ?
-      `\n${i}${objects.map(this.stringify.bind(this)).join(`,\n${i}`)}` : '';
+      `${this.joiner.slice(1)}${
+      objects.map(this.stringify.bind(this)).join(this.joiner)
+      }` : '';
     await this.file.open('wx');
-    await this.file.write(0, `[${content}\n]\n`);
+    await this.file.write(0, Buffer.from(`[${content}${this.trail}`));
     await this.file.close();
   }
 
@@ -101,32 +104,35 @@ class JSONStore<T> implements Store<T> {
 
   async append(data: T, position?: number) {
     const dataString = this.stringify(data);
-    return await this.appendRaw(dataString, position);
-  }
 
-  async appendRaw(dataString: string, position?: number, first = false) {
     if (!dataString)
       throw new Error('Cannot append empty string');
+
+    let first = false;
 
     if (!position)
       ({ position, first } = await this.getAppendPosition());
 
     const joiner = first ? this.joiner.slice(1) : this.joiner;
 
-    await this.file.write(
-      position!, `${joiner}${dataString}\n]\n`,
-    );
+    const buffer = Buffer.from(`${joiner}${dataString}${this.trail}`);
+
+    await this.file.write(position!, buffer);
 
     return {
-      start: position! + joiner.length,
-      length: dataString.length,
-      raw: dataString
+      start: position + joiner.length,
+      length: buffer.length - joiner.length - this.trail.length,
+      raw: buffer
     };
+  }
+
+  async write(buffer: Buffer, position: number) {
+    await this.file.write(position, buffer);
   }
 
   async set(position: number, value: any) {
     const valueString = JSON.stringify(value);
-    await this.file.write(position, valueString);
+    await this.file.write(position, Buffer.from(valueString));
   }
 
   async lastModified() {

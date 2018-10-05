@@ -110,11 +110,12 @@ class Index {
     // remains correct
     await this.store.lock(0, { exclusive: true });
 
+    const joiner = this.store.joiner;
+    const offset = joiner.length;
+
     const { position: startPosition } = await this.store.getAppendPosition();
     let insertPosition = startPosition;
-    const pendingRaw: string[] = [];
-
-    const offset = this.store.joiner.length;
+    const pendingRaw: Buffer[] = [];
 
     const process = (entry: IndexEntry) => {
       const position = insertPosition + offset;
@@ -126,8 +127,10 @@ class Index {
         const next = inserts[-pos - 1];
         entry.node.levels[i] = next.position;
       }
-      const raw = this.store.stringify(entry.encoded());
-      insertPosition = position + raw.length;
+      const raw = Buffer.from(
+        `${joiner}${this.store.stringify(entry.encoded())}`
+      );
+      insertPosition += raw.length;
       pendingRaw.push(raw);
     };
 
@@ -158,10 +161,8 @@ class Index {
     }
     this.logger.timeEnd(`inserting index entries - ${fieldName}`);
 
-    if (pendingRaw.length)
-      await this.store.appendRaw(
-        pendingRaw.join(this.store.joiner), startPosition
-      );
+    pendingRaw.push(Buffer.from(this.store.trail));
+    await this.store.write(Buffer.concat(pendingRaw), startPosition);
 
     await this.store.unlock();
 

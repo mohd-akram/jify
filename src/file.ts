@@ -34,9 +34,9 @@ class File extends EventEmitter {
     return read(this.fd, position, reverse, buffer);
   }
 
-  async write(position: number, text: string) {
+  async write(position: number, buffer: Buffer) {
     ++this.writes;
-    await fsWrite(this.fd!, text, position);
+    await fsWrite(this.fd!, buffer, 0, buffer.length, position);
   }
 
   async clear(position: number, length: number, char = ' ') {

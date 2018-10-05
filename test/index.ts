@@ -108,7 +108,9 @@ async function testInsertAndFind(n = 10_000, size = 100_000, count = 20) {
   const db = new Database(getFilename(`data-insert-${n}.json`));
 
   const { array: ids, count: idsCount } =
-    fillArray(n, _ => Math.random().toString(36));
+    fillArray(n, _ =>
+      Math.random().toString(36) + '😋'.repeat(Math.random() * 10)
+    );
   const { array: ages, count: agesCount } =
     fillArray(n, _ => Math.round(Math.random() * 100));
   const { array: dates, count: datesCount } =
