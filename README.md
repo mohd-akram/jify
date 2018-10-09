@@ -88,3 +88,11 @@ $ jify find --query "author.name=Charles Dickens,year>1840" books.json
 $ jify find --query "year>=1800<1900" books.json
 $ jify find --query "year<1800" --query "year>1900" books.json
 ```
+
+Performance
+-----------
+
+jify is reasonably fast. It can index about 1M records (~700 MB) per minute and
+supports parallel indexing of fields. Inserting (with indexes) has similar
+performance. Query time is < 5ms for the first result + (0.1ms find + 0.1ms
+fetch) per subsequent result. All tests on a MBP 2016 base model.
