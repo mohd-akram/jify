@@ -8,10 +8,11 @@
     "lib"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tisk -dm -Werror -o lib src",
+    "build-test": "npm run build && tisk -p . -o test/out test/*.ts",
     "lint": "tslint -p .",
-    "profile": "cd test && rollup -c | node --prof --no-logfile-per-isolate && node --prof-process v8.log > data/processed.txt && rm v8.log",
-    "test": "TS_NODE_FILES=true ts-node test",
+    "profile": "npm run build-test && cd test/out && node --prof --no-logfile-per-isolate . && node --prof-process v8.log > processed.txt && rm v8.log",
+    "test": "npm run build-test && node test/out",
     "prepare": "npm run build",
     "version": "npm test"
   },
@@ -31,12 +32,10 @@
   "homepage": "https://github.com/mohd-akram/jify#readme",
   "devDependencies": {
     "@types/argparse": "^1.0.35",
-    "@types/node": "^10.11.3",
-    "rollup": "^0.66.2",
-    "rollup-plugin-typescript3": "^1.1.1",
-    "ts-node": "^7.0.1",
+    "@types/node": "^10.11.7",
+    "tisk": "^1.0.7",
     "tslint": "^5.11.0",
-    "typescript": "^3.1.1"
+    "typescript": "^3.1.3"
   },
   "dependencies": {
     "argparse": "^1.0.10",

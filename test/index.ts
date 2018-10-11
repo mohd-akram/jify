@@ -1,18 +1,19 @@
 import * as assert from 'assert';
 import * as fs from 'fs';
+import * as path from 'path';
 import * as util from 'util';
 
-import Database, { Record } from '../src/database';
-import { predicate as p } from '../src/query';
-import { IndexField } from '../src/index';
-import * as utils from '../src/utils';
+import Database, { predicate as p } from '..';
+import { Record } from '../lib/database';
+import { IndexField } from '../lib';
+import * as utils from '../lib/utils';
 
 const logger = utils.logger('test');
 
 /* Helpers */
 
 function getFilename(filename: string) {
-  return `${__dirname}/data/${filename}`;
+  return path.join(__dirname, filename);
 }
 
 function getField(object: Record, field: string) {

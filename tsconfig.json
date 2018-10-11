@@ -3,7 +3,6 @@
     "src"
   ],
   "compilerOptions": {
-    "declaration": true,
     "esModuleInterop": true,
     "module": "commonjs",
     "moduleResolution": "node",
@@ -11,7 +10,6 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "outDir": "lib",
-    "sourceMap": true,
     "strict": true,
     "target": "esnext"
   }
