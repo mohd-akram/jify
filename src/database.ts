@@ -167,7 +167,7 @@ class Database<T extends Record = Record> {
     const alreadyOpen = this.store.isOpen;
     if (!alreadyOpen)
       await this.store.open();
-    await this.store.lock(0, { exclusive: true });
+    await this.store.lock(Number.MAX_SAFE_INTEGER, { exclusive: true });
 
     try {
       let indexFields: IndexField[] = [];
@@ -230,7 +230,7 @@ class Database<T extends Record = Record> {
           await this._index.endTransaction(name);
       }
     } finally {
-      await this.store.unlock();
+      await this.store.unlock(Number.MAX_SAFE_INTEGER);
       if (!alreadyOpen)
         await this.store.close();
       if (indexExists && !indexAlreadyOpen)

@@ -108,7 +108,7 @@ class Index {
 
     // Lock writes completely until we're done to ensure the append position
     // remains correct
-    await this.store.lock(0, { exclusive: true });
+    await this.store.lock(Number.MAX_SAFE_INTEGER, { exclusive: true });
 
     const joiner = this.store.joiner;
     const offset = joiner.length;
@@ -164,7 +164,7 @@ class Index {
     pendingRaw.push(Buffer.from(this.store.trail));
     await this.store.write(Buffer.concat(pendingRaw), startPosition);
 
-    await this.store.unlock();
+    await this.store.unlock(Number.MAX_SAFE_INTEGER);
 
     this.logger.time(`updating index entries - ${fieldName}`);
     for (const entry of updates.values()) {
@@ -296,6 +296,7 @@ class Index {
   ) {
     let head = await this.getRootEntry(cache);
     let name = '';
+    let lock = Number.MAX_SAFE_INTEGER - 1;
 
     while (name != field && head.link) {
       head = await this.getEntry(head.link, cache);
@@ -303,9 +304,11 @@ class Index {
       if (name == field) {
         // Lock and get the entry again since it might have changed
         // just before locking
-        await this.store.lock(head.position, { exclusive });
+        await this.store.lock(lock, { exclusive });
         head = await this.getEntry(head.position, cache);
+        (head as any).lock = lock;
       }
+      --lock;
     }
 
     if (name != field)
@@ -315,7 +318,7 @@ class Index {
   }
 
   protected async unlockHead(head: IndexEntry) {
-    await this.store.unlock(head.position);
+    await this.store.unlock((head as any).lock);
   }
 
   protected async getRootEntry(cache?: IndexCache) {
