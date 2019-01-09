@@ -91,7 +91,7 @@ class Database<T extends Record = Record> {
       try {
         for (const position of positions) {
           const res = await this.store.get(position);
-          yield [res.start, res.value];
+          yield [res.start, res.value] as [number, T];
         }
       } finally {
         if (!alreadyOpen)
