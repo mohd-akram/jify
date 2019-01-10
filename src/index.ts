@@ -248,7 +248,7 @@ class Index {
   }
 
   async getFields() {
-    let head = await this.getRootEntry();
+    let head = await this.lockRootEntry();
 
     const fields: IndexFieldInfo[] = [];
 
@@ -258,6 +258,8 @@ class Index {
       fields.push(info);
     }
 
+    await this.unlockRootEntry();
+
     return fields;
   }
 
@@ -265,10 +267,13 @@ class Index {
     if (!fields.length)
       return;
 
-    let head = await this.getRootEntry();
+    const root = await this.lockRootEntry(true);
+    let head = root;
+    let lock = (head as any).lock;
 
     while (head.link) {
       head = await this.getEntry(head.link);
+      --lock;
       const name =
         (JSON.parse(head.node.value as string) as IndexFieldInfo).name;
       fields = fields.filter(f => f.name != name);
@@ -276,7 +281,7 @@ class Index {
 
     let position: number | undefined;
     for (const field of fields) {
-      const prevHead = head;
+      const prevHeadPos = head.position;
       const info: IndexFieldInfo = { name: field.name, tx: 0 };
       if (field.type == 'date-time')
         info.type = field.type;
@@ -286,30 +291,42 @@ class Index {
         )
       );
       position = await this.insertEntry(head, undefined, position);
+      // Lock and update the previous head
+      if (prevHeadPos != root.position)
+        await this.store.lock(lock, { exclusive: true });
+      const prevHead = await this.getEntry(prevHeadPos);
       prevHead.link = head.position;
       await this.updateEntry(prevHead);
+      if (prevHeadPos != root.position)
+        await this.store.unlock(lock);
+      --lock;
     }
+
+    await this.unlockRootEntry();
   }
 
   protected async lockHead(
     field: string, exclusive = false, cache?: IndexCache
   ) {
-    let head = await this.getRootEntry(cache);
+    let head = await this.lockRootEntry();
+    let lock = (head as any).lock;
+
     let name = '';
-    let lock = Number.MAX_SAFE_INTEGER - 1;
 
     while (name != field && head.link) {
       head = await this.getEntry(head.link, cache);
+      --lock;
       name = (JSON.parse(head.node.value as string) as IndexFieldInfo).name;
       if (name == field) {
         // Lock and get the entry again since it might have changed
         // just before locking
         await this.store.lock(lock, { exclusive });
-        head = await this.getEntry(head.position, cache);
+        head = await this.getEntry(head.position, cache, true);
         (head as any).lock = lock;
       }
-      --lock;
     }
+
+    await this.unlockRootEntry();
 
     if (name != field)
       throw new IndexError(`Field "${field}" missing from index`);
@@ -321,16 +338,18 @@ class Index {
     await this.store.unlock((head as any).lock);
   }
 
-  protected async getRootEntry(cache?: IndexCache) {
-    const cached = cache && cache.get(0);
-    if (cached)
-      return cached;
+  protected async lockRootEntry(exclusive = false) {
+    const lock = Number.MAX_SAFE_INTEGER - 1;
+    await this.store.lock(lock, { exclusive });
     const { start, value } = await this.store.get(1);
     const entry = new IndexEntry(value);
     entry.position = start;
-    if (cache)
-      cache.set(0, entry);
+    (entry as any).lock = lock;
     return entry;
+  }
+
+  protected async unlockRootEntry() {
+    await this.store.unlock(Number.MAX_SAFE_INTEGER - 1);
   }
 
   protected async insertEntry(
@@ -345,8 +364,10 @@ class Index {
     return start + length;
   }
 
-  protected async getEntry(position: number, cache?: IndexCache) {
-    const cached = cache && cache.get(position);
+  protected async getEntry(
+    position: number, cache?: IndexCache, update = false
+  ) {
+    const cached = cache && !update ? cache.get(position) : undefined;
     if (cached)
       return cached;
     const { start, value } = await this.store.get(position);
