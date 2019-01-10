@@ -1,6 +1,6 @@
 {
   "name": "jify",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "An indexed JSON file database",
   "main": "lib/main.js",
   "bin": "lib/bin.js",
