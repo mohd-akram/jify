@@ -26,7 +26,7 @@
     "database"
   ],
   "author": "Mohamed Akram",
-  "license": "AGPL-3.0-only",
+  "license": "MIT",
   "bugs": {
     "url": "https://github.com/mohd-akram/jify/issues"
   },
