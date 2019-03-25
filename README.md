@@ -5,6 +5,9 @@ jify is an experimental library/tool for querying large (GBs) JSON files. It
 does this by first indexing the required fields. It can also be used as an
 append-only database.
 
+When a JSON file is indexed (eg. `data.json`) an index file is created in the
+same directory with a `.index.json` extension (eg. `data.index.json`).
+
 Install
 -------
 
@@ -53,7 +56,7 @@ async function main() {
     }
   ]);
 
-  // Index
+  // Index - creates books.index.json file
   await db.index('title', 'year', 'author.name');
 
   // Query
@@ -88,6 +91,16 @@ $ jify find --query "author.name=Charles Dickens,year>1840" books.json
 $ jify find --query "year>=1800<1900" books.json
 $ jify find --query "year<1800" --query "year>1900" books.json
 ```
+
+Implementation
+--------------
+
+The index is implemented as a JSON array of skip list entries. The entries are
+encoded as strings and all numbers embedded in the string are encoded using
+[Z85](https://rfc.zeromq.org/spec:32/Z85/). This implementation was chosen for
+its simplicity and to allow for using a single JSON file as an index. Better
+performance might be achieved by using a different data structure, a binary
+format, or multiple index files.
 
 Performance
 -----------
