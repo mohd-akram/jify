@@ -33,15 +33,15 @@
   "homepage": "https://github.com/mohd-akram/jify#readme",
   "devDependencies": {
     "@types/argparse": "^1.0.36",
-    "@types/node": "^11.11.6",
-    "is-wsl": "^1.1.0",
+    "@types/node": "^12.7.2",
+    "is-wsl": "^2.1.0",
     "tisk": "^1.0.8",
-    "tslint": "^5.14.0",
-    "typescript": "^3.3.4000"
+    "tslint": "^5.18.0",
+    "typescript": "^3.5.3"
   },
   "dependencies": {
     "argparse": "^1.0.10",
-    "os-lock": "^1.0.1",
+    "os-lock": "^1.0.2",
     "tiny-lru": "^6.0.1",
     "z85": "^0.0.2"
   }
