@@ -124,6 +124,7 @@ export async function* readJSON(
       }
     }
   }
+  return undefined;
 }
 
 export function findJSONfield(text: string, field: string) {
@@ -280,6 +281,7 @@ export async function* read(
       }
     }
   }
+  return undefined;
 }
 
 // Allocating buffers is expensive, so preallocate one

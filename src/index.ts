@@ -582,8 +582,8 @@ export interface IndexField {
 }
 
 export interface IndexCache {
-  get(key: number): IndexEntry | undefined;
-  set(key: number, value: IndexEntry): void;
+  get(key: number | string): IndexEntry | undefined;
+  set(key: number | string, value: IndexEntry): void;
 }
 
 export default Index;

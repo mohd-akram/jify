@@ -338,7 +338,7 @@ class Database<T extends Record = Record> {
 
     for (const [name, subprocess] of Object.entries(subprocesses)) {
       subprocess.send(batches[name]);
-      subprocess.send(null);
+      subprocess.send(null as any);
     }
 
     await Promise.all(Object.values(subprocesses).map(Database.waitForClose));

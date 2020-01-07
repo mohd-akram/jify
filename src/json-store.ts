@@ -47,14 +47,14 @@ class JSONStore<T> implements Store<T> {
 
   async get(position: number) {
     const { value, start, length } =
-      (await readJSON(this.file.read(position)).next()).value;
+      (await readJSON(this.file.read(position)).next()).value!;
     return { value: value as T, start, length };
   }
 
   async *getAll() {
     // Allow line-delimited JSON
     const start = Number(
-      (await this.file.read(0).next()).value[1] == Char.LeftBracket
+      (await this.file.read(0).next()).value![1] == Char.LeftBracket
     );
 
     const stream = readJSON(
@@ -63,7 +63,7 @@ class JSONStore<T> implements Store<T> {
 
     let res;
     while (!(res = await stream.next()).done) {
-      const result = res.value;
+      const result = res.value!;
       yield [result.start, result.value];
     }
   }
