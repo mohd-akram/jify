@@ -1,7 +1,6 @@
 import * as assert from 'assert';
-import * as fs from 'fs';
+import { promises as fs } from 'fs';
 import * as path from 'path';
-import * as util from 'util';
 
 import Database, { predicate as p } from '..';
 import { Record } from '../lib/database';
@@ -199,16 +198,16 @@ async function testQueries() {
 async function testInvalid() {
   const filename = getFilename('invalid.json');
   try {
-    await util.promisify(fs.unlink)(filename);
+    await fs.unlink(filename);
   } catch (e) {
     if (e.code != 'ENOENT')
       throw e;
   }
-  const fd = await util.promisify(fs.open)(filename, 'wx');
-  await util.promisify(fs.close)(fd);
+  const file = await fs.open(filename, 'wx');
+  await file.close();
   const db = new Database(filename);
   await assert.rejects(db.insert({}));
-  await util.promisify(fs.writeFile)(filename, 'invalid');
+  await fs.writeFile(filename, 'invalid');
   await assert.rejects(db.insert({}));
 }
 

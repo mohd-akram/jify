@@ -1,7 +1,6 @@
 import { Console } from 'console';
-import * as fs from 'fs';
+import { FileHandle } from 'fs/promises';
 import { Writable } from 'stream';
-import * as util from 'util';
 
 import * as z85 from 'z85';
 
@@ -202,14 +201,11 @@ function utf8codepoint(buf: Array<number> | Buffer, i = 0) {
   }
 }
 
-const fstat = util.promisify(fs.fstat);
-const fread = util.promisify(fs.read);
-
 export async function* read(
-  fd: number, position = 0, reverse = false, buffer?: Buffer
+  file: FileHandle, position = 0, reverse = false, buffer?: Buffer
 ) {
   if (position < 0)
-    position += (await fstat(fd)).size;
+    position += (await file.stat()).size;
 
   buffer = buffer || Buffer.alloc(1 << 12);
   const size = buffer.length;
@@ -231,7 +227,7 @@ export async function* read(
 
       pos = Math.max(pos, 0);
 
-      ({ bytesRead } = await fread(fd, buffer, 0, length, pos));
+      ({ bytesRead } = await file.read(buffer, 0, length, pos));
 
       for (let i = 0; i < bytesRead;) {
         let index = reverse ? (bytesRead - i - 1) : i;
