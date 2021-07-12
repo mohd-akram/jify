@@ -110,7 +110,7 @@ class File extends EventEmitter {
       return;
     } else {
       const timeout = setInterval(() => { }, ~0 >>> 1);
-      await new Promise(resolve => {
+      await new Promise<void>(resolve => {
         this.once('unlock', async () => {
           clearInterval(timeout);
           await this.lock(pos, options);

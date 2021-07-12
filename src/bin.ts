@@ -71,31 +71,35 @@ async function find(file: string, queries: string[]) {
 
 async function main() {
   const parser = new ArgumentParser({
-    version: require('../package.json').version,
-    addHelp: true,
+    add_help: true,
     description: 'query JSON files'
   });
 
-  const subparsers = parser.addSubparsers({ dest: 'command' });
+  parser.add_argument('--version', {
+    action: 'version',
+    version: require('../package.json').version,
+  });
+
+  const subparsers = parser.add_subparsers({ dest: 'command' });
 
   const commands = {
-    index: subparsers.addParser(
+    index: subparsers.add_parser(
       'index', { help: 'index JSON file' },
     ),
-    find: subparsers.addParser(
+    find: subparsers.add_parser(
       'find', { help: 'query JSON file' },
     )
   };
 
   // Index
-  commands.index.addArgument('file');
-  commands.index.addArgument('--field', { action: 'append' });
+  commands.index.add_argument('file');
+  commands.index.add_argument('--field', { action: 'append' });
 
   // Find
-  commands.find.addArgument('file');
-  commands.find.addArgument('--query', { action: 'append' });
+  commands.find.add_argument('file');
+  commands.find.add_argument('--query', { action: 'append' });
 
-  const args = parser.parseArgs();
+  const args = parser.parse_args();
   switch (args.command) {
     case 'index':
       await index(args.file, args.field);

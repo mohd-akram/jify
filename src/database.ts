@@ -352,7 +352,7 @@ class Database<T extends Record = Record> {
 
   private static async waitForReady(subprocess: child_process.ChildProcess) {
     const timeout = setInterval(() => { }, ~0 >>> 1);
-    await new Promise(resolve => {
+    await new Promise<void>(resolve => {
       subprocess.once('message', message => {
         if (message == 'ready') {
           clearInterval(timeout);
@@ -364,7 +364,7 @@ class Database<T extends Record = Record> {
 
   private static async waitForClose(subprocess: child_process.ChildProcess) {
     const timeout = setInterval(() => { }, ~0 >>> 1);
-    await new Promise(resolve => {
+    await new Promise<void>(resolve => {
       subprocess.once('close', () => {
         clearInterval(timeout);
         resolve();
