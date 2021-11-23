@@ -55,7 +55,7 @@ class Database<T extends Record = Record> {
     try {
       await this._index.drop();
     } catch (e) {
-      if (e.code != 'ENOENT')
+      if ((e as NodeJS.ErrnoException).code != 'ENOENT')
         throw e;
     }
   }
@@ -158,7 +158,7 @@ class Database<T extends Record = Record> {
       try {
         await this._index.open();
       } catch (e) {
-        if (e.code != 'ENOENT')
+        if ((e as NodeJS.ErrnoException).code != 'ENOENT')
           throw e;
         indexExists = false;
       }
@@ -247,7 +247,7 @@ class Database<T extends Record = Record> {
       try {
         await this._index.open();
       } catch (e) {
-        if (e.code != 'ENOENT')
+        if ((e as NodeJS.ErrnoException).code != 'ENOENT')
           throw e;
         indexExists = false;
       }

@@ -61,7 +61,7 @@ async function testInserts(
   try {
     await db.drop();
   } catch (e) {
-    if (e.code != 'ENOENT')
+    if ((e as NodeJS.ErrnoException).code != 'ENOENT')
       throw e;
   }
 
@@ -147,7 +147,7 @@ async function testQueries() {
   try {
     await db.drop();
   } catch (e) {
-    if (e.code != 'ENOENT')
+    if ((e as NodeJS.ErrnoException).code != 'ENOENT')
       throw e;
   }
   await db.create();
@@ -200,7 +200,7 @@ async function testInvalid() {
   try {
     await fs.unlink(filename);
   } catch (e) {
-    if (e.code != 'ENOENT')
+    if ((e as NodeJS.ErrnoException).code != 'ENOENT')
       throw e;
   }
   const file = await fs.open(filename, 'wx');
