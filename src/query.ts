@@ -1,10 +1,11 @@
 export function predicate<T>(
-  strings: TemplateStringsArray, ...values: T[]
+  strings: TemplateStringsArray,
+  ...values: T[]
 ): Predicate<T> {
-  let ops = strings.filter(o => o);
+  let ops = strings.filter((o) => o);
 
   if (!ops.length || ops.length > 2 || ops.length != values.length)
-    throw new Error('Invalid predicate');
+    throw new Error("Invalid predicate");
 
   let start: T | undefined;
   let end: T | undefined;
@@ -15,27 +16,25 @@ export function predicate<T>(
   ops = ops.map((o, i) => {
     const parts = o.trim().split(/\s+/);
 
-    if (parts.length > 2)
-      throw new Error('Invalid operator');
-    if (parts.length > 1 && parts[0] != '&&')
-      throw new Error('Only `&&` is supported between conditions');
+    if (parts.length > 2) throw new Error("Invalid operator");
+    if (parts.length > 1 && parts[0] != "&&")
+      throw new Error("Only `&&` is supported between conditions");
 
     const op = parts[parts.length - 1];
 
-    if (!['<', '>', '<=', '>='].includes(op))
+    if (!["<", ">", "<=", ">="].includes(op))
       throw new Error(`Unsupported operator "${op}" in predicate`);
 
-    if (op.startsWith('>')) {
+    if (op.startsWith(">")) {
       if (start != undefined)
-        throw new Error('Redundant operator in predicate');
-      excludeStart = op == '>';
+        throw new Error("Redundant operator in predicate");
+      excludeStart = op == ">";
       start = values[i];
     }
 
-    if (op.startsWith('<')) {
-      if (end != undefined)
-        throw new Error('Redundant operator in predicate');
-      excludeEnd = op == '<';
+    if (op.startsWith("<")) {
+      if (end != undefined) throw new Error("Redundant operator in predicate");
+      excludeEnd = op == "<";
       end = values[i];
     }
 
@@ -46,14 +45,12 @@ export function predicate<T>(
 
   const test: Predicate<T> = function (value: T) {
     if (test.key && !converted) {
-      if (start != undefined)
-        start = test.key(start);
-      if (end != undefined)
-        end = test.key(end);
+      if (start != undefined) start = test.key(start);
+      if (end != undefined) end = test.key(end);
       converted = true;
     }
-    const seek = start == undefined ? 1 :
-      (value < start ? -1 : value > start ? 1 : 0);
+    const seek =
+      start == undefined ? 1 : value < start ? -1 : value > start ? 1 : 0;
     const match =
       (start == undefined || (excludeStart ? value > start : value >= start)) &&
       (end == undefined || (excludeEnd ? value < end : value <= end));
@@ -65,7 +62,7 @@ export function predicate<T>(
 
 export interface Predicate<T> {
   key?: (value: T) => any;
-  (value: T): { seek: number, match: boolean };
+  (value: T): { seek: number; match: boolean };
 }
 
 export interface Query {

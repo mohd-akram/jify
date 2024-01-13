@@ -1,6 +1,6 @@
-import lru from 'tiny-lru';
+import lru from "tiny-lru";
 
-import Index, { ObjectField, IndexCache } from './index';
+import Index, { ObjectField, IndexCache } from "./index";
 
 const size = 1_000_000;
 let batch: ObjectField[] = [];
@@ -15,8 +15,7 @@ async function main(filename: string) {
   function insertBatch() {
     const b = batch;
     batch = [];
-    if (b.length)
-      index.insert(b, cache);
+    if (b.length) index.insert(b, cache);
   }
 
   const handler = async (objectFields?: ObjectField[]) => {
@@ -24,22 +23,23 @@ async function main(filename: string) {
       // Insert remaining fields
       insertBatch();
       // Cleanup
-      process.off('message', handler);
-      process.once('beforeExit', async () => {
+      process.off("message", handler);
+      process.once("beforeExit", async () => {
         await index.close();
       });
       return;
     }
 
     batch.push(...objectFields);
-    if (batch.length >= size)
-      insertBatch();
+    if (batch.length >= size) insertBatch();
   };
 
-  process.on('message', handler);
-  process.send!('ready');
+  process.on("message", handler);
+  process.send!("ready");
 }
 
-process.once('unhandledRejection', err => { throw err; });
+process.once("unhandledRejection", (err) => {
+  throw err;
+});
 
 main(process.argv[2]);

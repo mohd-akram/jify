@@ -1,11 +1,11 @@
-import File from './file';
-import Store from './store';
-import { Char, readJSON } from './utils';
+import File from "./file";
+import Store from "./store";
+import { Char, readJSON } from "./utils";
 
 class JSONStore<T> implements Store<T> {
   protected file: File;
 
-  trail = '\n]\n';
+  trail = "\n]\n";
 
   constructor(filename: string, protected indent = 2) {
     this.file = new File(filename);
@@ -24,11 +24,12 @@ class JSONStore<T> implements Store<T> {
   }
 
   async create(objects: T[] = []) {
-    const content = objects.length ?
-      `${this.joiner.slice(1)}${
-      objects.map(this.stringify.bind(this)).join(this.joiner)
-      }` : '';
-    await this.file.open('wx');
+    const content = objects.length
+      ? `${this.joiner.slice(1)}${objects
+          .map(this.stringify.bind(this))
+          .join(this.joiner)}`
+      : "";
+    await this.file.open("wx");
     await this.file.write(0, Buffer.from(`[${content}${this.trail}`));
     await this.file.close();
   }
@@ -46,8 +47,9 @@ class JSONStore<T> implements Store<T> {
   }
 
   async get(position: number) {
-    const { value, start, length } =
-      (await readJSON(this.file.read(position)).next()).value!;
+    const { value, start, length } = (
+      await readJSON(this.file.read(position)).next()
+    ).value!;
     return { value: value as T, start, length };
   }
 
@@ -77,8 +79,7 @@ class JSONStore<T> implements Store<T> {
     for await (const chars of this.file.read(-1, true)) {
       for (let i = 0; i < chars.length; i += 2) {
         const codePoint = chars[i + 1];
-        if (codePoint == Char.Space || codePoint == Char.Newline)
-          continue;
+        if (codePoint == Char.Space || codePoint == Char.Newline) continue;
         if (!position) {
           if (codePoint != Char.RightBracket) {
             done = true;
@@ -86,18 +87,15 @@ class JSONStore<T> implements Store<T> {
           }
           position = chars[i] - 1;
         } else {
-          if (codePoint == Char.LeftBracket)
-            first = true;
+          if (codePoint == Char.LeftBracket) first = true;
           done = true;
           break;
         }
       }
-      if (done)
-        break;
+      if (done) break;
     }
 
-    if (!position)
-      throw new Error('Invalid JSON file');
+    if (!position) throw new Error("Invalid JSON file");
 
     return { position, first };
   }
@@ -105,13 +103,11 @@ class JSONStore<T> implements Store<T> {
   async append(data: T, position?: number) {
     const dataString = this.stringify(data);
 
-    if (!dataString)
-      throw new Error('Cannot append empty string');
+    if (!dataString) throw new Error("Cannot append empty string");
 
     let first = false;
 
-    if (!position)
-      ({ position, first } = await this.getAppendPosition());
+    if (!position) ({ position, first } = await this.getAppendPosition());
 
     const joiner = first ? this.joiner.slice(1) : this.joiner;
 
@@ -122,7 +118,7 @@ class JSONStore<T> implements Store<T> {
     return {
       start: position + joiner.length,
       length: buffer.length - joiner.length - this.trail.length,
-      raw: buffer
+      raw: buffer,
     };
   }
 
@@ -140,14 +136,14 @@ class JSONStore<T> implements Store<T> {
   }
 
   stringify(data: T) {
-    const str = this.indent ? JSON.stringify([data], null, this.indent).slice(
-      2 + this.indent, -2
-    ) : JSON.stringify(data);
+    const str = this.indent
+      ? JSON.stringify([data], null, this.indent).slice(2 + this.indent, -2)
+      : JSON.stringify(data);
     return str;
   }
 
   get joiner() {
-    return `,\n${' '.repeat(this.indent)}`;
+    return `,\n${" ".repeat(this.indent)}`;
   }
 }
 

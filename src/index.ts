@@ -1,15 +1,17 @@
-import JSONStore from './json-store';
-import { Predicate } from './query';
+import JSONStore from "./json-store";
+import { Predicate } from "./query";
 import {
   logger,
-  z85DecodeAsUInt, z85EncodeAsUInt,
-  z85DecodeAsDouble, z85EncodeAsDouble
-} from './utils';
+  z85DecodeAsUInt,
+  z85EncodeAsUInt,
+  z85DecodeAsDouble,
+  z85EncodeAsDouble,
+} from "./utils";
 
 class Index {
   protected store: JSONStore<string>;
   protected maxHeight = 32;
-  protected logger = logger('index');
+  protected logger = logger("index");
 
   constructor(public filename: string) {
     this.store = new JSONStore(filename, 0);
@@ -54,8 +56,7 @@ class Index {
   async endTransaction(field: string) {
     const head = await this.lockHead(field, true);
     const value = JSON.parse(head.node.value as string);
-    if (!value.tx)
-      throw new IndexError(`Field "${field}" not in transaction`);
+    if (!value.tx) throw new IndexError(`Field "${field}" not in transaction`);
     value.tx = 0;
     head.node.value = JSON.stringify(value);
     await this.updateEntry(head);
@@ -63,21 +64,20 @@ class Index {
   }
 
   async insert(
-    objectFields: ObjectField | ObjectField[], cache: IndexCache = new Map()
+    objectFields: ObjectField | ObjectField[],
+    cache: IndexCache = new Map()
   ) {
-    if (!Array.isArray(objectFields))
-      objectFields = [objectFields];
+    if (!Array.isArray(objectFields)) objectFields = [objectFields];
 
-    if (!objectFields.length)
-      return;
+    if (!objectFields.length) return;
 
     const fieldName = objectFields[0].name;
     const head = await this.lockHead(fieldName, true, cache);
     const info: IndexFieldInfo = JSON.parse(head.node.value as string);
-    const isDateTime = info.type == 'date-time';
+    const isDateTime = info.type == "date-time";
 
     const transform = (o: ObjectField) => {
-      if (isDateTime && typeof o.value == 'string')
+      if (isDateTime && typeof o.value == "string")
         o.value = Date.parse(o.value);
     };
 
@@ -98,11 +98,13 @@ class Index {
     this.logger.time(`traversing index entries - ${fieldName}`);
     for (const objectField of objectFields) {
       const entries = await this.indexObjectField(
-        objectField, head!, cache, inserts
+        objectField,
+        head!,
+        cache,
+        inserts
       );
       for (const entry of entries)
-        if (entry.position > 0)
-          updates.set(entry.position, entry);
+        if (entry.position > 0) updates.set(entry.position, entry);
     }
     this.logger.timeEnd(`traversing index entries - ${fieldName}`);
 
@@ -122,8 +124,7 @@ class Index {
       entry.position = position;
       for (let i = 0; i < entry.node.levels.length; i++) {
         const pos = entry.node.levels[i];
-        if (pos >= 0)
-          continue;
+        if (pos >= 0) continue;
         const next = inserts[-pos - 1];
         entry.node.levels[i] = next.position;
       }
@@ -147,15 +148,13 @@ class Index {
         prev = entry;
       }
       while ((dupe = inserts[i + 1]) && dupe.node.value == value) {
-        if (prev)
-          dupe.link = prev.position;
+        if (prev) dupe.link = prev.position;
         process(dupe);
         prev = dupe;
         ++i;
       }
       if (!entry.node.isDuplicate) {
-        if (prev)
-          entry.link = prev.position;
+        if (prev) entry.link = prev.position;
         process(entry);
       }
     }
@@ -170,11 +169,9 @@ class Index {
     for (const entry of updates.values()) {
       for (let i = 0; i < entry.node.levels.length; i++) {
         const p = entry.node.levels[i];
-        if (p < 0)
-          entry.node.levels[i] = inserts[-p - 1].position;
+        if (p < 0) entry.node.levels[i] = inserts[-p - 1].position;
       }
-      if (entry.link < 0)
-        entry.link = inserts[-entry.link - 1].position;
+      if (entry.link < 0) entry.link = inserts[-entry.link - 1].position;
       await this.updateEntry(entry);
     }
     this.logger.timeEnd(`updating index entries - ${fieldName}`);
@@ -183,18 +180,19 @@ class Index {
   }
 
   protected async indexObjectField(
-    objectField: ObjectField, head: IndexEntry,
-    cache: IndexCache = new Map(), inserts: IndexEntry[]
+    objectField: ObjectField,
+    head: IndexEntry,
+    cache: IndexCache = new Map(),
+    inserts: IndexEntry[]
   ) {
     const { value, position } = objectField;
 
-    let height = head.node.levels.filter(p => p != 0).length;
+    let height = head.node.levels.filter((p) => p != 0).length;
 
     const maxLevel = Math.min(height, this.maxHeight - 1);
 
     let level = 0;
-    while (level < maxLevel && Math.round(Math.random()))
-      ++level;
+    while (level < maxLevel && Math.round(Math.random())) ++level;
 
     height = Math.max(height, level + 1);
 
@@ -204,18 +202,18 @@ class Index {
 
     for (let i = height - 1; i >= 0; i--) {
       let nextNodePos: number;
-      while (nextNodePos = current.node.next(i)) {
+      while ((nextNodePos = current.node.next(i))) {
         // Check cache ourselves to avoid promise overhead
-        const next = nextNodePos < 0 ? inserts[-nextNodePos - 1] :
-          cache.get(nextNodePos) || await this.getEntry(nextNodePos, cache);
-        if (next.node.value! <= value)
-          current = next;
-        if (next.node.value! >= value)
-          break;
+        const next =
+          nextNodePos < 0
+            ? inserts[-nextNodePos - 1]
+            : cache.get(nextNodePos) ||
+              (await this.getEntry(nextNodePos, cache));
+        if (next.node.value! <= value) current = next;
+        if (next.node.value! >= value) break;
       }
 
-      if (i > level)
-        continue;
+      if (i > level) continue;
 
       updates.push(current);
     }
@@ -223,11 +221,12 @@ class Index {
     const prev = updates[updates.length - 1];
     const isDuplicate = prev.node.value == value;
 
-    const entry = isDuplicate ?
-      new IndexEntry(position, new SkipListNode([], value)) :
-      new IndexEntry(position,
-        new SkipListNode(Array(level + 1).fill(0), value)
-      );
+    const entry = isDuplicate
+      ? new IndexEntry(position, new SkipListNode([], value))
+      : new IndexEntry(
+          position,
+          new SkipListNode(Array(level + 1).fill(0), value)
+        );
 
     inserts.push(entry);
     entry.position = -inserts.length; // placeholder position
@@ -264,8 +263,7 @@ class Index {
   }
 
   async addFields(fields: IndexField[]) {
-    if (!fields.length)
-      return;
+    if (!fields.length) return;
 
     const root = await this.lockRootEntry(true);
     let head = root;
@@ -274,21 +272,19 @@ class Index {
     while (head.link) {
       head = await this.getEntry(head.link);
       --lock;
-      const name =
-        (JSON.parse(head.node.value as string) as IndexFieldInfo).name;
-      fields = fields.filter(f => f.name != name);
+      const name = (JSON.parse(head.node.value as string) as IndexFieldInfo)
+        .name;
+      fields = fields.filter((f) => f.name != name);
     }
 
     let position: number | undefined;
     for (const field of fields) {
       const prevHeadPos = head.position;
       const info: IndexFieldInfo = { name: field.name, tx: 0 };
-      if (field.type == 'date-time')
-        info.type = field.type;
+      if (field.type == "date-time") info.type = field.type;
       head = new IndexEntry(
-        0, new SkipListNode(
-          Array(this.maxHeight).fill(0), JSON.stringify(info)
-        )
+        0,
+        new SkipListNode(Array(this.maxHeight).fill(0), JSON.stringify(info))
       );
       position = await this.insertEntry(head, undefined, position);
       // Lock and update the previous head
@@ -297,8 +293,7 @@ class Index {
       const prevHead = await this.getEntry(prevHeadPos);
       prevHead.link = head.position;
       await this.updateEntry(prevHead);
-      if (prevHeadPos != root.position)
-        await this.store.unlock(lock);
+      if (prevHeadPos != root.position) await this.store.unlock(lock);
       --lock;
     }
 
@@ -306,12 +301,14 @@ class Index {
   }
 
   protected async lockHead(
-    field: string, exclusive = false, cache?: IndexCache
+    field: string,
+    exclusive = false,
+    cache?: IndexCache
   ) {
     let head = await this.lockRootEntry();
     let lock = (head as any).lock;
 
-    let name = '';
+    let name = "";
 
     while (name != field && head.link) {
       head = await this.getEntry(head.link, cache);
@@ -353,28 +350,30 @@ class Index {
   }
 
   protected async insertEntry(
-    entry: IndexEntry, cache?: IndexCache, position?: number
+    entry: IndexEntry,
+    cache?: IndexCache,
+    position?: number
   ) {
     const { start, length } = await this.store.append(
-      entry.encoded(), position
+      entry.encoded(),
+      position
     );
     entry.position = start;
-    if (cache)
-      cache.set(entry.position, entry);
+    if (cache) cache.set(entry.position, entry);
     return start + length;
   }
 
   protected async getEntry(
-    position: number, cache?: IndexCache, update = false
+    position: number,
+    cache?: IndexCache,
+    update = false
   ) {
     const cached = cache && !update ? cache.get(position) : undefined;
-    if (cached)
-      return cached;
+    if (cached) return cached;
     const { start, value } = await this.store.get(position);
     const entry = new IndexEntry(value);
     entry.position = start;
-    if (cache)
-      cache.set(entry.position, entry);
+    if (cache) cache.set(entry.position, entry);
     return entry;
   }
 
@@ -386,14 +385,13 @@ class Index {
     const cache: IndexCache = new Map();
 
     const head = await this.lockHead(field, false, cache);
-    const height = head.node.levels.filter(p => p != 0).length;
+    const height = head.node.levels.filter((p) => p != 0).length;
 
     const info: IndexFieldInfo = JSON.parse(head.node.value as string);
 
-    if (info.tx)
-      throw new IndexError(`Field "${field}" in transaction`);
+    if (info.tx) throw new IndexError(`Field "${field}" in transaction`);
 
-    if (info.type == 'date-time')
+    if (info.type == "date-time")
       predicate.key = Date.parse as (s: SkipListValue) => number;
 
     let found = false;
@@ -401,35 +399,31 @@ class Index {
     let current: IndexEntry | null = head;
     for (let i = height - 1; i >= 0; i--) {
       let nextNodePos: number;
-      while (nextNodePos = current.node.next(i)) {
+      while ((nextNodePos = current.node.next(i))) {
         const next = await this.getEntry(nextNodePos, cache);
         const { seek } = predicate(next.node.value);
-        if (seek <= 0)
-          current = next;
-        if (seek == 0)
-          found = true;
-        if (seek >= 0)
-          break;
+        if (seek <= 0) current = next;
+        if (seek == 0) found = true;
+        if (seek >= 0) break;
       }
-      if (found)
-        break;
+      if (found) break;
     }
 
     if (current == head)
-      current = current.node.next(0) ?
-        await this.getEntry(current.node.next(0), cache) : null;
+      current = current.node.next(0)
+        ? await this.getEntry(current.node.next(0), cache)
+        : null;
 
     const pointers = new Set<number>();
 
     while (current) {
       let entry = current;
-      current = current.node.next(0) ?
-        await this.getEntry(current.node.next(0), cache) : null;
+      current = current.node.next(0)
+        ? await this.getEntry(current.node.next(0), cache)
+        : null;
       const { seek, match } = predicate(entry.node.value);
-      if (seek <= 0 && !match)
-        continue;
-      if (!match)
-        break;
+      if (seek <= 0 && !match) continue;
+      if (!match) break;
       pointers.add(entry.pointer);
       while (entry.link) {
         const link = await this.getEntry(entry.link, cache);
@@ -444,14 +438,14 @@ class Index {
   }
 }
 
-export class IndexError extends Error { }
-IndexError.prototype.name = 'IndexError';
+export class IndexError extends Error {}
+IndexError.prototype.name = "IndexError";
 
 const enum SkipListValueType {
   Null,
   Boolean,
   Number,
-  String
+  String,
 }
 
 type SkipListValue = null | boolean | number | string;
@@ -461,10 +455,13 @@ class SkipListNode {
   public value: SkipListValue = null;
 
   get type() {
-    return typeof this.value == 'boolean' ? SkipListValueType.Boolean :
-      typeof this.value == 'number' ? SkipListValueType.Number :
-        typeof this.value == 'string' ? SkipListValueType.String :
-          SkipListValueType.Null;
+    return typeof this.value == "boolean"
+      ? SkipListValueType.Boolean
+      : typeof this.value == "number"
+      ? SkipListValueType.Number
+      : typeof this.value == "string"
+      ? SkipListValueType.String
+      : SkipListValueType.Null;
   }
 
   constructor(encodedNode: string);
@@ -472,22 +469,21 @@ class SkipListNode {
   constructor(obj: any, value?: SkipListValue) {
     if (Array.isArray(obj)) {
       const levels: number[] = obj;
-      if (!levels)
-        throw new TypeError('levels is required');
-      if (typeof value == 'number' && !Number.isFinite(value))
-        throw new TypeError('Number value must be finite');
+      if (!levels) throw new TypeError("levels is required");
+      if (typeof value == "number" && !Number.isFinite(value))
+        throw new TypeError("Number value must be finite");
       this.value = value == null ? null : value;
       this.levels = levels;
     } else {
       const encodedNode = obj as string;
-      if (!encodedNode)
-        return;
-      const parts = encodedNode.split(';');
+      if (!encodedNode) return;
+      const parts = encodedNode.split(";");
       const [encodedLevels, encodedType] = parts.slice(0, 2);
       const type = z85DecodeAsUInt(encodedType, true);
-      this.value = SkipListNode.decodeValue(type, parts.slice(2).join(';'));
-      this.levels = encodedLevels ?
-        encodedLevels.split(',').map(l => z85DecodeAsUInt(l)) : [];
+      this.value = SkipListNode.decodeValue(type, parts.slice(2).join(";"));
+      this.levels = encodedLevels
+        ? encodedLevels.split(",").map((l) => z85DecodeAsUInt(l))
+        : [];
     }
   }
 
@@ -500,20 +496,18 @@ class SkipListNode {
   }
 
   encoded() {
-    if (this.isDuplicate)
-      return '';
+    if (this.isDuplicate) return "";
 
-    const encodedLevels = this.levels.map(l => z85EncodeAsUInt(l)).join(',');
+    const encodedLevels = this.levels.map((l) => z85EncodeAsUInt(l)).join(",");
 
     const encodedType = z85EncodeAsUInt(this.type, true);
 
-    let encodedValue = '';
-    if (typeof this.value == 'boolean')
+    let encodedValue = "";
+    if (typeof this.value == "boolean")
       encodedValue = z85EncodeAsUInt(Number(this.value), true);
-    else if (typeof this.value == 'number')
+    else if (typeof this.value == "number")
       encodedValue = z85EncodeAsDouble(this.value, true);
-    else if (typeof this.value == 'string')
-      encodedValue = this.value;
+    else if (typeof this.value == "string") encodedValue = this.value;
 
     return `${encodedLevels};${encodedType};${encodedValue}`;
   }
@@ -542,18 +536,18 @@ class IndexEntry {
   constructor(encodedEntry: string);
   constructor(pointer: number, node: SkipListNode);
   constructor(obj: any, node?: SkipListNode) {
-    if (typeof obj == 'string') {
+    if (typeof obj == "string") {
       const encodedEntry = obj as string;
-      const encodedParts = encodedEntry.split(';');
+      const encodedParts = encodedEntry.split(";");
       const encodedPointer = encodedParts[0];
       const encodedLink = encodedParts[1];
-      const encodedNode = encodedParts.slice(2).join(';');
+      const encodedNode = encodedParts.slice(2).join(";");
       this.pointer = z85DecodeAsUInt(encodedPointer);
       this.link = z85DecodeAsUInt(encodedLink);
       this.node = new SkipListNode(encodedNode);
     } else {
       if (obj == null || !node)
-        throw new TypeError('pointer and node are required');
+        throw new TypeError("pointer and node are required");
       this.pointer = obj;
       this.node = node;
     }
