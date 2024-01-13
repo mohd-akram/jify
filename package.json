@@ -8,7 +8,7 @@
     "lib"
   ],
   "scripts": {
-    "build": "tisk -dm -Werror -o lib src",
+    "build": "tisk -d -Werror -o lib src",
     "build-test": "npm run build && tisk -p . -o test/out test/index.ts",
     "lint": "eslint src --ext ts",
     "profile": "npm run build-test && cd test/out && node --prof --no-logfile-per-isolate . && node --prof-process v8.log > processed.txt && rm v8.log",
