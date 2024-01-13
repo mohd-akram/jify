@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import { promises as fs } from "fs";
+import fs from "fs/promises";
 import * as path from "path";
 
 import Database, { predicate as p } from "..";
@@ -244,9 +244,5 @@ async function main() {
   process.env.DEBUG = debug;
   await testInsertAndFind(n, size, count);
 }
-
-process.once("unhandledRejection", (err) => {
-  throw err;
-});
 
 main();

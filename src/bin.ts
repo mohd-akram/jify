@@ -111,8 +111,4 @@ async function main() {
   }
 }
 
-process.once("unhandledRejection", (err) => {
-  throw err;
-});
-
 main();

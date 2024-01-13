@@ -1,4 +1,4 @@
-import lru from "tiny-lru";
+import { lru } from "tiny-lru";
 
 import Index, { ObjectField, IndexCache } from "./index";
 
@@ -37,9 +37,5 @@ async function main(filename: string) {
   process.on("message", handler);
   process.send!("ready");
 }
-
-process.once("unhandledRejection", (err) => {
-  throw err;
-});
 
 main(process.argv[2]);

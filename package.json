@@ -13,7 +13,7 @@
     "lint": "eslint src --ext ts",
     "profile": "npm run build-test && cd test/out && node --prof --no-logfile-per-isolate . && node --prof-process v8.log > processed.txt && rm v8.log",
     "test": "npm run check-wsl && npm run build-test && node test/out",
-    "check-wsl": "node -e \"process.exitCode=+require('is-wsl')\" || (echo WSL is unsupported >&2 && exit 1)",
+    "check-wsl": "node -e \"(async()=>process.exitCode=+(await import('is-wsl')).default)()\" || (echo WSL is unsupported >&2 && exit 1)",
     "prepare": "npm run build",
     "version": "npm test"
   },
@@ -32,19 +32,19 @@
   },
   "homepage": "https://github.com/mohd-akram/jify#readme",
   "devDependencies": {
-    "@types/argparse": "^2.0.10",
-    "@types/node": "^16.11.9",
-    "@typescript-eslint/eslint-plugin": "^5.4.0",
-    "@typescript-eslint/parser": "^5.4.0",
-    "eslint": "^8.3.0",
-    "is-wsl": "^2.2.0",
-    "tisk": "^1.0.9",
-    "typescript": "^4.5.2"
+    "@types/argparse": "^2.0.14",
+    "@types/node": "^20.11.0",
+    "@typescript-eslint/eslint-plugin": "^6.18.1",
+    "@typescript-eslint/parser": "^6.18.1",
+    "eslint": "^8.56.0",
+    "is-wsl": "^3.1.0",
+    "tisk": "v2.0.0",
+    "typescript": "^5.3.3"
   },
   "dependencies": {
     "argparse": "^2.0.1",
     "os-lock": "^2.0.0",
-    "tiny-lru": "^7.0.6",
+    "tiny-lru": "^11.2.5",
     "z85": "^0.0.2"
   }
 }

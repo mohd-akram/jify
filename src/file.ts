@@ -1,6 +1,5 @@
 import { EventEmitter } from "events";
-import { promises as fs } from "fs";
-import { FileHandle } from "fs/promises";
+import fs, { FileHandle } from "fs/promises";
 
 import { lock, unlock } from "os-lock";
 
