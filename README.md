@@ -14,69 +14,65 @@ same directory with a `.index.json` extension (eg. `data.index.json`).
 ## Usage
 
 ```javascript
-const { Database, predicate: p } = require("jify");
+import { Database, predicate as p } from "jify";
 
-async function main() {
-  const db = new Database("books.json");
+const db = new Database("books.json");
 
-  // Create
-  await db.create();
+// Create
+await db.create();
 
-  // Insert - Single
-  await db.insert({
-    title: "Robinson Crusoe",
-    year: 1719,
-    author: { name: "Daniel Defoe" },
-  });
+// Insert - Single
+await db.insert({
+  title: "Robinson Crusoe",
+  year: 1719,
+  author: { name: "Daniel Defoe" },
+});
 
-  // Insert - Batch
-  await db.insert([
-    {
-      title: "Great Expectations",
-      year: 1861,
-      author: { name: "Charles Dickens" },
-    },
-    {
-      title: "Oliver Twist",
-      year: 1838,
-      author: { name: "Charles Dickens" },
-    },
-    {
-      title: "Pride and Prejudice",
-      year: 1813,
-      author: { name: "Jane Austen" },
-    },
-    {
-      title: "Nineteen Eighty-Four",
-      year: 1949,
-      author: { name: "George Orwell" },
-    },
-  ]);
+// Insert - Batch
+await db.insert([
+  {
+    title: "Great Expectations",
+    year: 1861,
+    author: { name: "Charles Dickens" },
+  },
+  {
+    title: "Oliver Twist",
+    year: 1838,
+    author: { name: "Charles Dickens" },
+  },
+  {
+    title: "Pride and Prejudice",
+    year: 1813,
+    author: { name: "Jane Austen" },
+  },
+  {
+    title: "Nineteen Eighty-Four",
+    year: 1949,
+    author: { name: "George Orwell" },
+  },
+]);
 
-  // Index - creates books.index.json file
-  await db.index("title", "year", "author.name");
+// Index - creates books.index.json file
+await db.index("title", "year", "author.name");
 
-  // Query
-  console.log("author.name = Charles Dickens, year > 1840");
-  const query = { "author.name": "Charles Dickens", year: p`> ${1840}` };
-  for await (const record of db.find(query)) console.log(record);
+// Query
+console.log("author.name = Charles Dickens, year > 1840");
+const query = { "author.name": "Charles Dickens", year: p`> ${1840}` };
+for await (const record of db.find(query)) console.log(record);
 
-  let records;
+let records;
 
-  // Range query
-  console.log("1800 <= year < 1900");
-  records = await db.find({ year: p`>= ${1800} < ${1900}` }).toArray();
-  console.log(records);
+// Range query
+console.log("1800 <= year < 1900");
+records = await db.find({ year: p`>= ${1800} < ${1900}` }).toArray();
+console.log(records);
 
-  // Multiple queries
-  console.log("year < 1800 or year > 1900");
-  records = await db
-    .find({ year: p`< ${1800}` }, { year: p`> ${1900}` })
-    .toArray();
-  console.log(records);
-}
-
-main();
+// Multiple queries
+console.log("year < 1800 or year > 1900");
+records = await db
+  .find({ year: p`< ${1800}` }, { year: p`> ${1900}` })
+  .toArray();
+console.log(records);
 ```
 
 ### CLI
