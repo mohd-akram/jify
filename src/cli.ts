@@ -74,7 +74,7 @@ async function find(file: string, queries: string[]) {
   for await (const record of iter) console.log(JSON.stringify(record));
 }
 
-async function main() {
+export default async function main() {
   const parser = new ArgumentParser({
     add_help: true,
     description: "query JSON files",
@@ -110,5 +110,3 @@ async function main() {
       break;
   }
 }
-
-main();

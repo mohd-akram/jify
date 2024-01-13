@@ -2,7 +2,7 @@ import * as assert from "assert";
 import fs from "fs/promises";
 import * as path from "path";
 
-import Database, { predicate as p } from "..";
+import { Database, predicate as p } from "..";
 import { Record } from "../lib/database";
 import { IndexField } from "../lib";
 import * as utils from "../lib/utils";
